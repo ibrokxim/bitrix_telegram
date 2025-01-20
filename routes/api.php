@@ -1,0 +1,19 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\OrderController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\RegistrationController;
+
+Route::get('/catalogs', [ProductController::class, 'getCatalogs']);
+Route::get('/product/{id}', [ProductController::class, 'getProductById']);
+Route::get('/products/category/{sectionId}', [ProductController::class, 'getProducts']);
+Route::post('/cart/add/{productId}', [ProductController::class, 'addToCart']);
+Route::get('/cart', [ProductController::class, 'viewCart']);
+Route::post('/checkout', [ProductController::class, 'checkout']);
+
+Route::post('/register', [RegistrationController::class, 'register']);
+Route::post('/process-user-request', [RegistrationController::class, 'processUserRequest']);
+Route::post('/place-order', [OrderController::class, 'placeOrder']);
+Route::post('/check-auth', [OrderController::class, 'checkAuth']);
+
