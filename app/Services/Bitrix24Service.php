@@ -13,8 +13,6 @@ class Bitrix24Service
     {
         $this->client = new Client();
         $this->webhookUrl = env('BITRIX24_WEBHOOK_URL');
-        $this->baseUrl = "https://kadyrovmedical.bitrix24.kz"; // Ваш базовый URL
-        $this->authToken = "q4a0r1ia6r10uagz"; // Ваш токен аутентификации
     }
 
     // Получение списка каталогов
@@ -50,12 +48,10 @@ class Bitrix24Service
 
             $result = json_decode($response->getBody()->getContents(), true);
 
-            // Обработка продуктов и их изображений
             if (isset($result['result']) && !empty($result['result'])) {
                 $processedProducts = [];
 
                 foreach ($result['result'] as $product) {
-                    // Получаем изображения для каждого продукта
                     try {
                         $imageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
                             'json' => [
@@ -79,8 +75,6 @@ class Bitrix24Service
                                 ];
                             }
                         }
-
-                        // Добавляем изображения к продукту
                         $product['images'] = $images;
 
                     } catch (\Exception $e) {

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\TelegramController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
@@ -16,4 +17,4 @@ Route::post('/register', [RegistrationController::class, 'register']);
 Route::post('/process-user-request', [RegistrationController::class, 'processUserRequest']);
 Route::post('/place-order', [OrderController::class, 'placeOrder']);
 Route::post('/check-auth', [OrderController::class, 'checkAuth']);
-
+Route::post('/webhook/telegram', [TelegramController::class, 'handleWebhook']);
