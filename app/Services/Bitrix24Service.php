@@ -31,15 +31,16 @@ class Bitrix24Service
         return json_decode($response->getBody()->getContents(), true)['result'];
     }
 
+
     // Получение списка продуктов из определенного каталога
     public function getProducts($sectionId)
     {
         try {
             $response = $this->client->post($this->webhookUrl . 'crm.product.list', [
                 'json' => [
-                    'select' => ['id', 'NAME', 'CATALOG_ID','ACTIVE', 'PRICE', 'CURRENCY_ID',
-                                 'MEASURE', 'DETAIL_PICTURE', 'PREVIEW_PICTURE',
-                                 'PROPERTY_*', 'PROPERTY_FASOVKA_PRICE', 'SECTION_ID'],
+                    'select' => ['id', 'NAME', 'CATALOG_ID', 'ACTIVE', 'PRICE', 'CURRENCY_ID',
+                        'MEASURE', 'DETAIL_PICTURE',
+                         'PROPERTY_FASOVKA_PRICE', 'SECTION_ID'],
                     'filter' => [
                         'CATALOG_ID' => $sectionId,
                     ],
@@ -49,10 +50,60 @@ class Bitrix24Service
 
             $result = json_decode($response->getBody()->getContents(), true);
 
+            // Обработка продуктов и их изображений
+            if (isset($result['result']) && !empty($result['result'])) {
+                $processedProducts = [];
+
+                foreach ($result['result'] as $product) {
+                    // Получаем изображения для каждого продукта
+                    try {
+                        $imageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
+                            'json' => [
+                                'id' => $product['ID'],
+                                'productId' => $product['ID']
+                            ]
+                        ]);
+
+                        $imageResult = json_decode($imageResponse->getBody()->getContents(), true);
+                        $images = [];
+
+                        if (isset($imageResult['result']['productImages']) && !empty($imageResult['result']['productImages'])) {
+                            foreach ($imageResult['result']['productImages'] as $image) {
+                                $images[] = [
+                                    'id' => $image['id'],
+                                    'name' => $image['name'],
+                                    'detailUrl' => $image['detailUrl'],
+                                    'downloadUrl' => $image['downloadUrl'],
+                                    'type' => $image['type'],
+                                    'createTime' => $image['createTime']
+                                ];
+                            }
+                        }
+
+                        // Добавляем изображения к продукту
+                        $product['images'] = $images;
+
+                    } catch (\Exception $e) {
+                        \Log::error('Error getting images for product: ' . $e->getMessage(), [
+                            'productId' => $product['ID']
+                        ]);
+                        $product['images'] = [];
+                    }
+
+                    $processedProducts[] = $product;
+                }
+
+                return [
+                    'products' => $processedProducts,
+                    'total' => $result['total'] ?? count($processedProducts)
+                ];
+            }
+
             return [
-                'products' => $result['result'],
-                'total' => $result['total'] ?? count($result['result'])
+                'products' => [],
+                'total' => 0
             ];
+
         } catch (\Exception $e) {
             \Log::error('Bitrix24 API Error: ' . $e->getMessage());
 
@@ -63,57 +114,137 @@ class Bitrix24Service
         }
     }
 
+
+    private function getProductVariations($productId)
+    {
+        try {
+            \Log::info('Searching variations for product ID: ' . $productId);
+
+            $response = $this->client->post($this->webhookUrl . 'catalog.product.offer.list', [
+                'json' => [
+                    'select' => [
+                        'id',
+                        'iblockId',
+                        'name',
+                        'parentId',
+                        'property121',
+                        'quantity',
+                        'measure'
+                    ],
+                    'filter' => [
+                        'iblockId' => 17,
+                        'parentId' => $productId
+                    ]
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            \Log::info('Variations API Response:', $result);
+
+            $variations = [];
+
+            // Изменено: проверяем наличие offers в результате
+            if (isset($result['result']['offers']) && !empty($result['result']['offers'])) {
+                foreach ($result['result']['offers'] as $variation) { // Изменено: перебираем offers
+                    $variations[] = [
+                        'id' => $variation['id'],
+                        'name' => $variation['name'],
+                        'size' => $variation['property121']['valueEnum'] ?? null,
+                        'price' => $variation['property121']['value'] ?? 0,
+                        'quantity' => $variation['quantity'] ?? 0,
+                        'measure' => $variation['measure'] ?? 'ml',
+                        'parent_id' => $variation['parentId']['value'] ?? null
+                    ];
+                }
+            }
+
+            return $variations;
+        } catch (\Exception $e) {
+            \Log::error('Error getting variations: ' . $e->getMessage(), [
+                'productId' => $productId,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return [];
+        }
+    }
+    private function processImages($product)
+    {
+        try {
+            // Запрос к catalog.productImage.list
+            $response = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
+                'json' => [
+                    'id' => $product['ID'],
+                    'productId' => $product['ID']
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+            $images = [];
+
+            if (isset($result['result']['productImages']) && !empty($result['result']['productImages'])) {
+                foreach ($result['result']['productImages'] as $image) {
+                    $images[] = [
+                        'id' => $image['id'],
+                        'name' => $image['name'],
+                        'detailUrl' => $image['detailUrl'],
+                        'downloadUrl' => $image['downloadUrl'],
+                        'type' => $image['type'],
+                        'createTime' => $image['createTime']
+                    ];
+                }
+            }
+
+            return $images;
+        } catch (\Exception $e) {
+            \Log::error('Error getting product images: ' . $e->getMessage(), [
+                'productId' => $product['ID'],
+                'trace' => $e->getTraceAsString()
+            ]);
+            return [];
+        }
+    }
     public function getProductById($id)
     {
-        $response = $this->client->post($this->webhookUrl . 'crm.product.get', [
-            'json' => [
-                'id' => $id,
-            ]
-        ]);
+        try {
+            $response = $this->client->post($this->webhookUrl . 'crm.product.get', [
+                'json' => [
+                    'id' => $id,
+                ]
+            ]);
 
-        $result = json_decode($response->getBody()->getContents(), true);
+            $result = json_decode($response->getBody()->getContents(), true);
 
-        if (isset($result['result']) && !empty($result['result'])) {
-            $product = $result['result'];
+            if (isset($result['result']) && !empty($result['result'])) {
+                $product = $result['result'];
 
-            // Обработка изображений и файлов
-            $images = [];
-            if (isset($product['PROPERTY_45']) && is_array($product['PROPERTY_45'])) {
-                foreach ($product['PROPERTY_45'] as $file) {
-                    $images[] = [
-                        'id' => $file['valueId'],
-                        'showUrl' => $this->baseUrl . $file['value']['showUrl'] . '&auth=' . $this->authToken,
-                        'downloadUrl' => $this->baseUrl . $file['value']['downloadUrl'] . '&auth=' . $this->authToken,
-                    ];
-                }
+                // Обработка изображений
+                $images = $this->processImages($product);
+
+                $variations = $this->getProductVariations($id);
+
+                return [
+                    'id' => $product['ID'],
+                    'name' => $product['NAME'],
+                    'price' => $product['PRICE'],
+                    'currency' => $product['CURRENCY_ID'],
+                    'description_uz' => $product['PROPERTY_117'],
+                    'measure' => 'ml',
+                    'catalog_id' => $product['CATALOG_ID'],
+                    'images' => $images,
+                    'variations' => $variations,
+
+                ];
             }
-
-            // Обработка доз и их стоимости
-            $doses = [];
-            if (isset($product['PROPERTY_FASOVKA']) && is_array($product['PROPERTY_FASOVKA'])) {
-                foreach ($product['PROPERTY_FASOVKA'] as $index => $dose) {
-                    $doses[] = [
-                        'dose' => $dose,
-                        'cost' => $product['PROPERTY_FASOVKA_PRICE'][$index] ?? 0
-                    ];
-                }
-            }
-
-            return [
-                'id' => $product['ID'],
-                'name' => $product['NAME'],
-                'price' => $product['PRICE'],
-                'currency' => $product['CURRENCY_ID'],
-                'description_uz' => $product['PROPERTY_117'],
-                'measure' => 'ml',
-                'catalog_id' => $product['CATALOG_ID'],
-                'images' => $images,
-                'doses' => $doses
-            ];
+            return null;
+        } catch (\Exception $e) {
+            \Log::error('Error getting product: ' . $e->getMessage(), [
+                'productId' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return null;
         }
-        return null;
     }
-
     public function addOrder($orderData)
     {
         $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
