@@ -18,7 +18,7 @@ class OrderController extends Controller
 
     public function placeOrder(Request $request)
     {
-        $chatId = 289116384;
+        $chatId = $request->input('chat_id'); // ID чата в Telegram
         $cartItems = $request->input('cart'); // Товары из корзины
         $totalAmount = $request->input('total_amount'); // Общая сумма заказа
 
