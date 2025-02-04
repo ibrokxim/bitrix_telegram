@@ -158,7 +158,7 @@ class RegistrationController extends Controller
 
             return response()->json([
                 'message' => 'Пользователь одобрен',
-                'mini_app_link' => "https://lms.tuit.uz"
+                'mini_app_link' => "https://t.me/kadyrov_urologbot/market"
             ]);
         } else {
             $user->status = 'rejected';
