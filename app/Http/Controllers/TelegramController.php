@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use Illuminate\Http\Request;
 use App\Services\TelegramService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class TelegramController extends Controller
@@ -18,111 +18,102 @@ class TelegramController extends Controller
 
     public function handleWebhook(Request $request)
     {
-        try {
-            Log::info('Webhook received', ['data' => $request->all()]);
+        Log::info('Вебхук получен:', $request->all());
+        $update = $request->all();
 
-            $update = $request->all();
-
-            // Обработка callback query (нажатие на кнопки)
-            if (isset($update['callback_query'])) {
-                return $this->handleCallbackQuery($update['callback_query']);
-            }
-
-            // Обработка обычных сообщений
-            if (isset($update['message'])) {
-                $message = $update['message'];
-                $chatId = $message['chat']['id'];
-                $text = $message['text'] ?? '';
-
-                if ($text === '/start') {
-                    $this->telegramService->handleStartCommand($chatId);
-                }
-            }
-
-            return response()->json(['status' => 'success']);
-        } catch (\Exception $e) {
-            Log::error('Webhook error:', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json(['status' => 'error'], 500);
+        // Обработка команды /start
+        if (isset($update['message']['text']) && $update['message']['text'] === '/start') {
+            $this->handleStartCommand($update['message']['chat']['id']);
         }
+
+        // Обработка callback-запросов
+        if (isset($update['callback_query'])) {
+            $this->handleCallbackQuery($update['callback_query']);
+        }
+
+        return response()->json(['status' => 'success']);
     }
 
-    protected function handleCallbackQuery($callbackQuery)
+    private function handleStartCommand($chatId)
+    {
+        Log::info('Обработка команды /start для chat_id: ' . $chatId);
+        $this->telegramService->handleStartCommand($chatId);
+    }
+
+    private function handleCallbackQuery($callbackQuery)
     {
         try {
             $data = $callbackQuery['data'];
-            $chatId = $callbackQuery['from']['id'];
+            $messageId = $callbackQuery['message']['message_id'];
+            $chatId = $callbackQuery['message']['chat']['id'];
+            $userId = $callbackQuery['from']['id'];
 
-            // Разбираем данные callback_query
-            if (strpos($data, 'approve_user_') === 0) {
-                $userId = substr($data, strlen('approve_user_'));
-                return $this->approveUser($userId, $chatId);
+            // Проверка прав администратора
+            if (!$this->isAdmin($userId)) {
+                $this->telegramService->answerCallbackQuery(
+                    $callbackQuery['id'],
+                    '⛔ У вас нет прав для этого действия!'
+                );
+                return;
             }
 
-            if (strpos($data, 'reject_user_') === 0) {
-                $userId = substr($data, strlen('reject_user_'));
-                return $this->rejectUser($userId, $chatId);
+            // Обработка действий
+            if (str_starts_with($data, 'approve_user_')) {
+                $this->processApproveAction($data, $chatId, $messageId, $callbackQuery['id']);
+            } elseif (str_starts_with($data, 'reject_user_')) {
+                $this->processRejectAction($data, $chatId, $messageId, $callbackQuery['id']);
             }
 
-            return response()->json(['status' => 'success']);
         } catch (\Exception $e) {
-            Log::error('Callback query error:', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json(['status' => 'error'], 500);
+            Log::error('Ошибка обработки callback: ' . $e->getMessage());
         }
     }
 
-    protected function approveUser($userId, $chatId)
+    private function processApproveAction($data, $chatId, $messageId, $callbackQueryId)
     {
-        try {
-            $user = User::findOrFail($userId);
-            $user->status = 'approved';
-            $user->save();
+        $targetUserId = (int) str_replace('approve_user_', '', $data);
 
-            // Отправляем сообщение администратору
-            $this->telegramService->sendMessage($chatId, "✅ Пользователь {$user->first_name} {$user->second_name} одобрен");
+        // Удаляем кнопки
+        $this->telegramService->editMessageReplyMarkup($chatId, $messageId);
 
-            // Отправляем сообщение пользователю
-            $this->telegramService->sendMessage($user->telegram_chat_id,
-                "✅ Ваша заявка одобрена!\nТеперь вы можете использовать мини-приложение: https://lms.tuit.uz"
-            );
+        // Обновляем статус пользователя
+        $user = User::findOrFail($targetUserId);
+        $user->update(['status' => 'approved']);
 
-            return response()->json(['status' => 'success']);
-        } catch (\Exception $e) {
-            Log::error('Error approving user:', [
-                'user_id' => $userId,
-                'error' => $e->getMessage()
-            ]);
-            return response()->json(['status' => 'error'], 500);
-        }
+        // Отправляем уведомление пользователю
+        $this->telegramService->sendApprovalMessage($user);
+
+        // Ответ на callback
+        $this->telegramService->answerCallbackQuery(
+            $callbackQueryId,
+            '✅ Пользователь одобрен!'
+        );
     }
 
-    protected function rejectUser($userId, $chatId)
+    private function processRejectAction($data, $chatId, $messageId, $callbackQueryId)
     {
-        try {
-            $user = User::findOrFail($userId);
-            $user->status = 'rejected';
-            $user->save();
+        $targetUserId = (int) str_replace('reject_user_', '', $data);
 
-            // Отправляем сообщение администратору
-            $this->telegramService->sendMessage($chatId, "❌ Пользователь {$user->first_name} {$user->second_name} отклонен");
+        // Удаляем кнопки
+        $this->telegramService->editMessageReplyMarkup($chatId, $messageId);
 
-            // Отправляем сообщение пользователю
-            $this->telegramService->sendMessage($user->telegram_chat_id,
-                "❌ К сожалению, ваша заявка была отклонена."
-            );
+        // Обновляем статус пользователя
+        $user = User::findOrFail($targetUserId);
+        $user->update(['status' => 'rejected']);
 
-            return response()->json(['status' => 'success']);
-        } catch (\Exception $e) {
-            Log::error('Error rejecting user:', [
-                'user_id' => $userId,
-                'error' => $e->getMessage()
-            ]);
-            return response()->json(['status' => 'error'], 500);
-        }
+        // Отправляем уведомление пользователю
+        $this->telegramService->sendRejectionMessage($user);
+
+        // Ответ на callback
+        $this->telegramService->answerCallbackQuery(
+            $callbackQueryId,
+            '❌ Пользователь отклонен!'
+        );
+    }
+
+    private function isAdmin($telegramUserId)
+    {
+        $adminIds = [289116384];
+        return in_array($telegramUserId, $adminIds);
     }
 }
