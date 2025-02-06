@@ -3,6 +3,7 @@ namespace App\Services;
 
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class Bitrix24Service
 {
@@ -120,7 +121,10 @@ class Bitrix24Service
 
                 return $images;
             } catch (\Exception $e) {
-                \Log::error('Error getting images: ' . $e->getMessage());
+                Log::error('Error getting product images: ' . $e->getMessage(), [
+                    'productId' => $productId,
+                    'trace' => $e->getTraceAsString()
+                ]);
                 return [];
             }
         });
@@ -298,6 +302,11 @@ class Bitrix24Service
                 'message' => $e->getMessage()
             ];
         }
+    }
+
+    public function clearProductImagesCache($productId)
+    {
+        Cache::forget("product_images_{$productId}");
     }
 
 }
