@@ -32,24 +32,20 @@ class TelegramService
             return;
         }
         $message = "🇷🇺 Ваш запрос одобрен! ✅
-
-        Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇
-
+        Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇\n\n
         🇺🇿 So’rovingiz qabul qilindi! ✅
-
         Marketplace'ga o’tish uchun quyidagi tugmani bosing 👇";
 
         $keyboard = [
             'inline_keyboard' => [
                 [
                     [
-                        'text' => 'Открыть/Ochish',
-                        'web_app' => [
+                            'text' => 'Открыть/Ochish',
                             'url' => "https://t.me/kadyrov_urologbot/market"
                         ]
                     ]
                 ]
-            ]
+
         ];
 
         $this->bot->sendMessage([
@@ -78,10 +74,7 @@ class TelegramService
         Log::info('Отправка приветственного сообщения для chat_id:', ['chat_id' => $chatId]);
 
         // Отправляем приветственное сообщение
-        $message = "🇷🇺 👋 Привет! Добро пожаловать в наш бот.\n\n" .
-            "Для продолжения работы, пожалуйста, зарегистрируйтесь в мини-приложении".
-                   " 🇺🇿 👋 Salom! Bizning  botimizga xush kelibsiz.\n\n" .
-            "Davom etish uchun, iltimos, quyidagi ilovada ro’yxatdan o’ting.";
+        $message = "🇷🇺 👋 Привет! Добро пожаловать в наш бот.\n\nДля продолжения работы, пожалуйста, зарегистрируйтесь в мини-приложении 🇺🇿 👋 Salom! Bizning  botimizga xush kelibsiz.\n\nDavom etish uchun, iltimos, quyidagi ilovada ro’yxatdan o’ting.";
 
         try {
             $this->bot->sendMessage([
