@@ -147,11 +147,12 @@ class Bitrix24Service
 
                 if (isset($result['result']) && !empty($result['result'])) {
                     $product = $result['result'];
+                    $priceData = $this->getProductPrice($product['ID']);
 
                     return [
                         'id' => $product['ID'],
                         'name' => $product['NAME'],
-                        'price' => $product['PRICE'],
+                        'price' => $priceData ? $priceData['price'] : $product['PRICE'],
                         'currency' => $product['CURRENCY_ID'],
                         'description_uz' => $product['PROPERTY_117'],
                         'measure' => 'ml',
@@ -179,7 +180,7 @@ class Bitrix24Service
                     'json' => [
                         'select' => [
                             'id', 'iblockId', 'name', 'parentId',
-                            'property121', 'quantity', 'measure'
+                            'purchasingPrice', 'quantity', 'measure', 'property121'
                         ],
                         'filter' => [
                             'iblockId' => 17,
@@ -187,17 +188,19 @@ class Bitrix24Service
                         ]
                     ]
                 ]);
-
                 $result = json_decode($response->getBody()->getContents(), true);
+                Log::info('Variations API Response', ['response' => $result]);
+
                 $variations = [];
 
                 if (isset($result['result']['offers']) && !empty($result['result']['offers'])) {
                     foreach ($result['result']['offers'] as $variation) {
+                        $priceData = $this->getProductPrice($variation['id']);
                         $variations[] = [
                             'id' => $variation['id'],
                             'name' => $variation['name'],
                             'size' => $variation['property121']['valueEnum'] ?? null,
-                            'price' => $variation['property121']['value'] ?? 0,
+                            'price' => $priceData ? $priceData['price'] : null,
                             'quantity' => $variation['quantity'] ?? 0,
                             'measure' => $variation['measure'] ?? 'ml',
                             'parent_id' => $variation['parentId']['value'] ?? null
@@ -309,4 +312,39 @@ class Bitrix24Service
         Cache::forget("product_images_{$productId}");
     }
 
+    private function getProductPrice($productId)
+    {
+        try {
+            $response = $this->client->post($this->webhookUrl . 'catalog.price.list', [
+                'json' => [
+                    'filter' => [
+                        'productId' => $productId
+                    ],
+                    'select' => [
+                        'id',
+                        'currency',
+                        'productId',
+                        'price'
+                    ]
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            // Проверяем наличие цены в ответе
+            if (isset($result['result']['prices'][0])) {
+                return [
+                    'price' => $result['result']['prices'][0]['price'],
+                    'currency' => $result['result']['prices'][0]['currency']
+                ];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Error getting product price: ' . $e->getMessage(), [
+                'productId' => $productId
+            ]);
+            return null;
+        }
+    }
 }

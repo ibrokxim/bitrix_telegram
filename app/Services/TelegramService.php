@@ -81,9 +81,9 @@ class TelegramService
 
         // Отправляем приветственное сообщение
         $message = "🇷🇺 👋 Привет! Добро пожаловать в наш бот.\n\n" .
-            "Для продолжения работы, пожалуйста, зарегистрируйтесь в мини-приложении.
-            🇺🇿 👋 Salom! Bizning  botimizga xush kelibsiz.\n\n
-            Ishni davom ettirish uchun, iltimos, mini ilovada ro’yxatdan o’ting."; ;
+            "Для продолжения работы, пожалуйста, зарегистрируйтесь в мини-приложении".
+                   " 🇺🇿 👋 Salom! Bizning  botimizga xush kelibsiz.\n\n" .
+            "Davom etish uchun, iltimos, quyidagi ilovada ro’yxatdan o’ting.";
 
         try {
             $this->bot->sendMessage([
