@@ -32,9 +32,9 @@ class TelegramService
             return;
         }
         $message = "🇷🇺 Ваш запрос одобрен! ✅
-        Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇\n\n
+Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇\n
         🇺🇿 So’rovingiz qabul qilindi! ✅
-        Marketplace'ga o’tish uchun quyidagi tugmani bosing 👇";
+Marketplace'ga o’tish uchun quyidagi tugmani bosing 👇";
 
         $keyboard = [
             'inline_keyboard' => [
@@ -98,7 +98,7 @@ Barcha mahsulotlarga ko’rish uchun quyidagi tugmani bosing 👇 va ro‘yxatda
             $this->bot->sendMessage([
                 'chat_id' => $chatId,
                 'text' => $message,
-                'reply' => json_encode($keyboard)
+                'reply_markup' => json_encode($keyboard)
             ]);
             Log::info('Приветственное сообщение отправлено для chat_id:', ['chat_id' => $chatId]);
         } catch (\Exception $e) {
