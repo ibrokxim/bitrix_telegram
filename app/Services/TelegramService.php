@@ -74,12 +74,31 @@ class TelegramService
         Log::info('Отправка приветственного сообщения для chat_id:', ['chat_id' => $chatId]);
 
         // Отправляем приветственное сообщение
-        $message = "🇷🇺 👋 Привет! Добро пожаловать в наш бот.\n\nДля продолжения работы, пожалуйста, зарегистрируйтесь в мини-приложении 🇺🇿 👋 Salom! Bizning  botimizga xush kelibsiz.\n\nDavom etish uchun, iltimos, quyidagi ilovada ro’yxatdan o’ting.";
+        $message = "
+        🇷🇺 Добро пожаловать на наш маркетплейс! 👋
 
+Чтобы получить доступ ко всем товарам, нажмите на кнопку ниже 👇 и пройдите регистрацию.
+
+🇺🇿 Marketplace’imizga xush kelibsiz! 👋
+
+Barcha mahsulotlarga ko’rish uchun quyidagi tugmani bosing 👇 va ro‘yxatdan o‘ting.
+        ";
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    [
+                        'text' => 'Открыть/Ochish',
+                        'url' => "https://t.me/kadyrov_urologbot/market"
+                    ]
+                ]
+            ]
+
+        ];
         try {
             $this->bot->sendMessage([
                 'chat_id' => $chatId,
-                'text' => $message
+                'text' => $message,
+                'reply' => json_encode($keyboard)
             ]);
             Log::info('Приветственное сообщение отправлено для chat_id:', ['chat_id' => $chatId]);
         } catch (\Exception $e) {
