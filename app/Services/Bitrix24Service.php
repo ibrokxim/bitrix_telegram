@@ -89,46 +89,6 @@ class Bitrix24Service
         });
     }
 
-    // Кеширование изображений продукта
-    private function getProductImages($productId)
-    {
-        $cacheKey = "product_images_{$productId}";
-
-        return Cache::remember($cacheKey, $this->cacheTimeout, function () use ($productId) {
-            try {
-                $imageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
-                    'json' => [
-                        'id' => $productId,
-                        'productId' => $productId
-                    ]
-                ]);
-
-                $imageResult = json_decode($imageResponse->getBody()->getContents(), true);
-                $images = [];
-
-                if (isset($imageResult['result']['productImages']) && !empty($imageResult['result']['productImages'])) {
-                    foreach ($imageResult['result']['productImages'] as $image) {
-                        $images[] = [
-                            'id' => $image['id'],
-                            'name' => $image['name'],
-                            'detailUrl' => $image['detailUrl'],
-                            'downloadUrl' => $image['downloadUrl'],
-                            'type' => $image['type'],
-                            'createTime' => $image['createTime']
-                        ];
-                    }
-                }
-
-                return $images;
-            } catch (\Exception $e) {
-                Log::error('Error getting product images: ' . $e->getMessage(), [
-                    'productId' => $productId,
-                    'trace' => $e->getTraceAsString()
-                ]);
-                return [];
-            }
-        });
-    }
 
     // Получение продукта по ID с кешем
     public function getProductById($id)
@@ -154,6 +114,7 @@ class Bitrix24Service
                         'name' => $product['NAME'],
                         'price' => $priceData ? $priceData['price'] : $product['PRICE'],
                         'currency' => $product['CURRENCY_ID'],
+                        'description' => $product['DESCRIPTION'],
                         'description_uz' => $product['PROPERTY_117'],
                         'measure' => 'ml',
                         'catalog_id' => $product['CATALOG_ID'],
@@ -346,5 +307,45 @@ class Bitrix24Service
             ]);
             return null;
         }
+    }
+
+    private function getProductImages($productId)
+    {
+        $cacheKey = "product_images_{$productId}";
+
+        return Cache::remember($cacheKey, $this->cacheTimeout, function () use ($productId) {
+            try {
+                $imageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
+                    'json' => [
+                        'id' => $productId,
+                        'productId' => $productId
+                    ]
+                ]);
+
+                $imageResult = json_decode($imageResponse->getBody()->getContents(), true);
+                $images = [];
+
+                if (isset($imageResult['result']['productImages']) && !empty($imageResult['result']['productImages'])) {
+                    foreach ($imageResult['result']['productImages'] as $image) {
+                        $images[] = [
+                            'id' => $image['id'],
+                            'name' => $image['name'],
+                            'detailUrl' => $image['detailUrl'],
+                            'downloadUrl' => $image['downloadUrl'],
+                            'type' => $image['type'],
+                            'createTime' => $image['createTime']
+                        ];
+                    }
+                }
+
+                return $images;
+            } catch (\Exception $e) {
+                Log::error('Error getting product images: ' . $e->getMessage(), [
+                    'productId' => $productId,
+                    'trace' => $e->getTraceAsString()
+                ]);
+                return [];
+            }
+        });
     }
 }
