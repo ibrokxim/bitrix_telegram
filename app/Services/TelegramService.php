@@ -63,10 +63,8 @@ class TelegramService
     {
         $chatId = $user->telegram_chat_id;
 
-        $message = "🇷🇺 ❌ К сожалению, ваш запрос был отклонен.\n\n" .
-            "Свяжитесь с администратором для получения дополнительной информации.
-            🇺🇿❌ Afsuski, so’rovingiz rad etildi.\n\n" .
-            "Qo’shimcha ma’lumot uchun administrator bilan bog’laning.";
+        $message = "🇷🇺 ❌ К сожалению, ваш запрос был отклонен.\n\nСвяжитесь с администратором для получения дополнительной информации.
+            🇺🇿❌ Afsuski, so’rovingiz rad etildi.\n\nQo’shimcha ma’lumot uchun administrator bilan bog’laning.";
 
         $this->bot->sendMessage([
             'chat_id' => $chatId,

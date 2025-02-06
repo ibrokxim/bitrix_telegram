@@ -26,5 +26,6 @@ class Kernel extends ConsoleKernel
     }
     protected $commands = [
         \App\Console\Commands\SetTelegramWebhook::class,
+        \App\Console\Commands\ClearProductCache::class,
     ];
 }
