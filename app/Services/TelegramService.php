@@ -32,8 +32,7 @@ class TelegramService
             return;
         }
         $message = "🇷🇺 Ваш запрос одобрен! ✅
-Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇\n
-        🇺🇿 So’rovingiz qabul qilindi! ✅
+Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇\n🇺🇿 So’rovingiz qabul qilindi! ✅
 Marketplace'ga o’tish uchun quyidagi tugmani bosing 👇";
 
         $keyboard = [
@@ -75,13 +74,13 @@ Marketplace'ga o’tish uchun quyidagi tugmani bosing 👇";
 
         // Отправляем приветственное сообщение
         $message = "
-        🇷🇺 Добро пожаловать на наш маркетплейс! 👋
+        🇷🇺 Добро пожаловать на наш маркетплейс!👋
 
 Чтобы получить доступ ко всем товарам, нажмите на кнопку ниже 👇 и пройдите регистрацию.
 
-🇺🇿 Marketplace’imizga xush kelibsiz! 👋
+🇺🇿 Marketplace’imizga xush kelibsiz!👋
 
-Barcha mahsulotlarga ko’rish uchun quyidagi tugmani bosing 👇 va ro‘yxatdan o‘ting.
+Barcha mahsulotlarni ko’rish uchun quyidagi tugmani bosing 👇 va ro‘yxatdan o‘ting.
         ";
         $keyboard = [
             'inline_keyboard' => [

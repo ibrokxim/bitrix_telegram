@@ -248,19 +248,26 @@ class Bitrix24Service
         try {
             $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
                 'json' => [
-                    'fields' => $dealData
+                    'fields' => $dealData,
+                    'params' => ['REGISTER_SONET_EVENT' => 'Y']
                 ]
             ]);
 
             $result = json_decode($response->getBody()->getContents(), true);
 
-            return [
-                'deal_id' => $result['result'],
-                'status' => 'success'
-            ];
-        } catch (\Exception $e) {
-            \Log::error('Bitrix24 Deal Creation Error: ' . $e->getMessage());
+            Log::debug('Bitrix24 Response:', $result);
 
+            if (isset($result['error'])) {
+                throw new \Exception($result['error_description'] ?? 'Unknown Bitrix24 error');
+            }
+
+            return [
+                'status' => 'success',
+                'deal_id' => $result['result']
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Bitrix24 Deal Error: ' . $e->getMessage());
             return [
                 'status' => 'error',
                 'message' => $e->getMessage()
