@@ -41,7 +41,7 @@ class OrderController extends Controller
 
             // Формируем данные для Битрикс24
             $bitrixData = [
-                'TITLE' => "Заказ #{$order->id} от {$user->full_name}",
+                'TITLE' => "Заказ #{$order->id} от {$user->first_name} {$user->last_name} ",
                 'TYPE_ID' => 'SALE',
                 'STAGE_ID' => 'NEW',
                 'CURRENCY_ID' => 'UZS',
@@ -50,8 +50,10 @@ class OrderController extends Controller
                 'CONTACT_ID' => $user->bitrix_contact_id,
                 'PRODUCT_ROWS' => $this->formatProducts($request->cart),
                 'COMMENTS' => json_encode([
-                    'Telegram Chat ID' => $user->telegram_chat_id,
-                    'User ID' => $user->id
+                    'Источник' => 'Telegram бот',
+                    'Пользователь' => $user->first_name . ' ' . $user->last_name,
+                    'Телефон' => $user->phone,
+
                 ])
             ];
 
