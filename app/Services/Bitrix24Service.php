@@ -322,30 +322,107 @@ class Bitrix24Service
 
         return Cache::remember($cacheKey, $this->cacheTimeout, function () use ($productId) {
             try {
-                $imageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
+                $images = [];
+
+                // Получаем изображения головного товара
+                $mainImageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
                     'json' => [
-                        'id' => $productId,
-                        'productId' => $productId
+                        'productId' => $productId,
+                        'select' => [
+                            'id',
+                            'name',
+                            'productId',
+                            'type',
+                            'createTime',
+                            'downloadUrl',
+                            'detailUrl'
+                        ]
                     ]
                 ]);
 
-                $imageResult = json_decode($imageResponse->getBody()->getContents(), true);
-                $images = [];
+                $mainImageResult = json_decode($mainImageResponse->getBody()->getContents(), true);
 
-                if (isset($imageResult['result']['productImages']) && !empty($imageResult['result']['productImages'])) {
-                    foreach ($imageResult['result']['productImages'] as $image) {
+                // Получаем вариации товара
+                $variationsResponse = $this->client->post($this->webhookUrl . 'catalog.product.offer.list', [
+                    'json' => [
+                        'select' => [
+                            'id',
+                            'iblockId',
+                            'name',
+                            'parentId',
+                            'property121' // Размер/фасовка
+                        ],
+                        'filter' => [
+                            'iblockId' => 17,
+                            'parentId' => $productId
+                        ]
+                    ]
+                ]);
+
+                $variationsResult = json_decode($variationsResponse->getBody()->getContents(), true);
+
+                // Если есть вариации, получаем их изображения
+                if (isset($variationsResult['result']['offers']) && !empty($variationsResult['result']['offers'])) {
+                    foreach ($variationsResult['result']['offers'] as $variation) {
+                        $variationImageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
+                            'json' => [
+                                'productId' => $variation['id'],
+                                'select' => [
+                                    'id',
+                                    'name',
+                                    'productId',
+                                    'type',
+                                    'createTime',
+                                    'downloadUrl',
+                                    'detailUrl'
+                                ]
+                            ]
+                        ]);
+
+                        $variationImageResult = json_decode($variationImageResponse->getBody()->getContents(), true);
+
+                        if (isset($variationImageResult['result']['productImages'])) {
+                            foreach ($variationImageResult['result']['productImages'] as $image) {
+                                $images[] = [
+                                    'id' => $image['id'],
+                                    'name' => $image['name'],
+                                    'detailUrl' => $image['detailUrl'],
+                                    'downloadUrl' => $image['downloadUrl'],
+                                    'type' => $image['type'],
+                                    'createTime' => $image['createTime'],
+                                    'size' => $variation['property121']['valueEnum'] ?? null,
+                                    'variation_id' => $variation['id'],
+                                    'is_variation' => true
+                                ];
+                            }
+                        }
+                    }
+                }
+
+                // Если нет вариаций или есть, но у них нет изображений, используем изображения головного товара
+                if (empty($images) && isset($mainImageResult['result']['productImages'])) {
+                    foreach ($mainImageResult['result']['productImages'] as $image) {
                         $images[] = [
                             'id' => $image['id'],
                             'name' => $image['name'],
                             'detailUrl' => $image['detailUrl'],
                             'downloadUrl' => $image['downloadUrl'],
                             'type' => $image['type'],
-                            'createTime' => $image['createTime']
+                            'createTime' => $image['createTime'],
+                            'is_variation' => false
                         ];
                     }
                 }
 
+                // Логируем результат
+                Log::info('Product images fetched', [
+                    'productId' => $productId,
+                    'imagesCount' => count($images),
+                    'hasVariations' => isset($variationsResult['result']['offers'])
+                ]);
+
                 return $images;
+
             } catch (\Exception $e) {
                 Log::error('Error getting product images: ' . $e->getMessage(), [
                     'productId' => $productId,
