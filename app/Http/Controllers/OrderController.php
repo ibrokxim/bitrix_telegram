@@ -33,8 +33,11 @@ class OrderController extends Controller
                 'user_id' => $user->id,
                 'total_amount' => $request->total_amount,
                 'products' => json_encode($request->cart),
-                'status' => 'new'
+                'status' => 'new',
+                'created_at' => now(),
+                'updated_at' => now()
             ]);
+
 
             // Формируем данные для Битрикс24
             $bitrixData = [
