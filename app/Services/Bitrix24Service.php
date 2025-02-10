@@ -1,7 +1,9 @@
 <?php
 namespace App\Services;
 
+use Exception;
 use GuzzleHttp\Client;
+use GuzzleHttp\Promise\Utils;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -58,7 +60,7 @@ class Bitrix24Service
                 ]);
 
                 // Ждем результат запроса продуктов
-                $responses = \GuzzleHttp\Promise\Utils::unwrap($promises);
+                $responses = Utils::unwrap($promises);
                 $result = json_decode($responses['products']->getBody()->getContents(), true);
 
                 if (!isset($result['result']) || empty($result['result'])) {
@@ -86,7 +88,7 @@ class Bitrix24Service
                 }
 
                 // Получаем все изображения параллельно
-                $imageResponses = \GuzzleHttp\Promise\Utils::unwrap($imagePromises);
+                $imageResponses = Utils::unwrap($imagePromises);
 
                 // Обрабатываем результаты и добавляем изображения к продуктам
                 $processedProducts = [];
@@ -101,7 +103,7 @@ class Bitrix24Service
                     'total' => $result['total'] ?? count($processedProducts)
                 ];
 
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 Log::error('Bitrix24 API Error: ' . $e->getMessage(), [
                     'sectionId' => $sectionId,
                     'timestamp' => '2025-02-10 08:16:59',
@@ -148,7 +150,7 @@ class Bitrix24Service
                     ];
                 }
                 return null;
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 \Log::error('Error getting product: ' . $e->getMessage());
                 return null;
             }
@@ -195,7 +197,7 @@ class Bitrix24Service
                 }
 
                 return $variations;
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 \Log::error('Error getting variations: ' . $e->getMessage());
                 return [];
             }
@@ -239,7 +241,7 @@ class Bitrix24Service
                 'contact_id' => $result['result'], // ID созданного контакта
                 'status' => 'success'
             ];
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             \Log::error('Bitrix24 Contact Creation Error: ' . $e->getMessage());
 
             return [
@@ -262,7 +264,7 @@ class Bitrix24Service
             ]);
 
             return true;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             \Log::error('Bitrix24 Lead Update Error: ' . $e->getMessage());
             return false;
         }
@@ -283,7 +285,7 @@ class Bitrix24Service
             Log::debug('Bitrix24 Response:', $result);
 
             if (isset($result['error'])) {
-                throw new \Exception($result['error_description'] ?? 'Unknown Bitrix24 error');
+                throw new Exception($result['error_description'] ?? 'Unknown Bitrix24 error');
             }
 
             return [
@@ -291,7 +293,7 @@ class Bitrix24Service
                 'deal_id' => $result['result']
             ];
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Bitrix24 Deal Error: ' . $e->getMessage());
             return [
                 'status' => 'error',
@@ -333,7 +335,7 @@ class Bitrix24Service
             }
 
             return null;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Error getting product price: ' . $e->getMessage(), [
                 'productId' => $productId
             ]);
@@ -374,7 +376,7 @@ class Bitrix24Service
                 ];
 
                 // Выполняем запросы параллельно
-                $responses = \GuzzleHttp\Promise\Utils::unwrap($promises);
+                $responses = Utils::unwrap($promises);
 
                 $mainImageResult = json_decode($responses['main']->getBody()->getContents(), true);
                 $variationsResult = json_decode($responses['variations']->getBody()->getContents(), true);
@@ -398,7 +400,7 @@ class Bitrix24Service
                     }
 
                     // Получаем все изображения вариаций параллельно
-                    $variationResponses = \GuzzleHttp\Promise\Utils::unwrap($variationPromises);
+                    $variationResponses = Utils::unwrap($variationPromises);
 
                     foreach ($variationsResult['result']['offers'] as $variation) {
                         if (isset($variationResponses[$variation['id']])) {
@@ -443,7 +445,7 @@ class Bitrix24Service
 
                 return $images;
 
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 Log::error('Error getting product images: ' . $e->getMessage(), [
                     'productId' => $productId,
                     'trace' => $e->getTraceAsString(),
