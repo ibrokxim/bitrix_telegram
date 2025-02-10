@@ -42,11 +42,11 @@ class Bitrix24Service
 
         return Cache::remember($cacheKey, $this->cacheTimeout, function () use ($sectionId) {
             try {
-                // Получаем основные данные о продуктах
-                $response = $this->client->post($this->webhookUrl . 'crm.product.list', [
+                // Получаем список продуктов
+                $promises['products'] = $this->client->postAsync($this->webhookUrl . 'crm.product.list', [
                     'json' => [
                         'select' => [
-                            'id', 'NAME', 'CATALOG_ID', 'PRICE',
+                            'id', 'NAME', 'CATALOG_ID', 'ACTIVE', 'PRICE',
                             'CURRENCY_ID', 'MEASURE', 'SECTION_ID'
                         ],
                         'filter' => [
@@ -57,7 +57,9 @@ class Bitrix24Service
                     ]
                 ]);
 
-                $result = json_decode($response->getBody()->getContents(), true);
+                // Ждем результат запроса продуктов
+                $responses = \GuzzleHttp\Promise\Utils::unwrap($promises);
+                $result = json_decode($responses['products']->getBody()->getContents(), true);
 
                 if (!isset($result['result']) || empty($result['result'])) {
                     return [
@@ -66,91 +68,31 @@ class Bitrix24Service
                     ];
                 }
 
-                // Создаем массив промисов для параллельных запросов изображений
-                $promises = [];
+                // Создаем массив промисов для параллельного получения изображений
+                $imagePromises = [];
                 foreach ($result['result'] as $product) {
-                    $promises[$product['ID']] = [
-                        'main' => $this->client->postAsync($this->webhookUrl . 'catalog.productImage.list', [
+                    $imagePromises[$product['ID']] = $this->client->postAsync(
+                        $this->webhookUrl . 'catalog.productImage.list',
+                        [
                             'json' => [
                                 'productId' => $product['ID'],
-                                'select' => ['id', 'name', 'productId', 'type', 'createTime', 'downloadUrl', 'detailUrl']
-                            ]
-                        ]),
-                        'variations' => $this->client->postAsync($this->webhookUrl . 'catalog.product.offer.list', [
-                            'json' => [
-                                'select' => ['id', 'iblockId', 'name', 'parentId', 'property121'],
-                                'filter' => [
-                                    'iblockId' => 17,
-                                    'parentId' => $product['ID']
+                                'select' => [
+                                    'id', 'name', 'productId', 'type',
+                                    'createTime', 'downloadUrl', 'detailUrl'
                                 ]
                             ]
-                        ])
-                    ];
+                        ]
+                    );
                 }
 
-                // Выполняем все запросы параллельно
-                $imageResults = [];
-                foreach ($promises as $productId => $promise) {
-                    try {
-                        $mainResult = $promise['main']->wait();
-                        $variationsResult = $promise['variations']->wait();
+                // Получаем все изображения параллельно
+                $imageResponses = \GuzzleHttp\Promise\Utils::unwrap($imagePromises);
 
-                        $imageResults[$productId] = [
-                            'main' => json_decode($mainResult->getBody()->getContents(), true),
-                            'variations' => json_decode($variationsResult->getBody()->getContents(), true)
-                        ];
-                    } catch (\Exception $e) {
-                        Log::error("Error fetching images for product {$productId}: " . $e->getMessage());
-                        $imageResults[$productId] = null;
-                    }
-                }
-
-                // Обрабатываем результаты и собираем финальный массив продуктов
+                // Обрабатываем результаты и добавляем изображения к продуктам
                 $processedProducts = [];
                 foreach ($result['result'] as $product) {
-                    $images = [];
-
-                    if (isset($imageResults[$product['ID']])) {
-                        $imageData = $imageResults[$product['ID']];
-
-                        // Обрабатываем изображения вариаций
-                        if (isset($imageData['variations']['result']['offers'])) {
-                            foreach ($imageData['variations']['result']['offers'] as $variation) {
-                                if (isset($variation['images'])) {
-                                    foreach ($variation['images'] as $image) {
-                                        $images[] = [
-                                            'id' => $image['id'],
-                                            'name' => $image['name'],
-                                            'detailUrl' => $image['detailUrl'],
-                                            'downloadUrl' => $image['downloadUrl'],
-                                            'type' => $image['type'],
-                                            'createTime' => $image['createTime'],
-                                            'size' => $variation['property121']['valueEnum'] ?? null,
-                                            'variation_id' => $variation['id'],
-                                            'is_variation' => true
-                                        ];
-                                    }
-                                }
-                            }
-                        }
-
-                        // Если нет изображений вариаций, используем основные изображения
-                        if (empty($images) && isset($imageData['main']['result']['productImages'])) {
-                            foreach ($imageData['main']['result']['productImages'] as $image) {
-                                $images[] = [
-                                    'id' => $image['id'],
-                                    'name' => $image['name'],
-                                    'detailUrl' => $image['detailUrl'],
-                                    'downloadUrl' => $image['downloadUrl'],
-                                    'type' => $image['type'],
-                                    'createTime' => $image['createTime'],
-                                    'is_variation' => false
-                                ];
-                            }
-                        }
-                    }
-
-                    $product['images'] = $images;
+                    // Получаем изображения для текущего продукта
+                    $product['images'] = $this->getProductImages($product['ID']);
                     $processedProducts[] = $product;
                 }
 
@@ -162,7 +104,7 @@ class Bitrix24Service
             } catch (\Exception $e) {
                 Log::error('Bitrix24 API Error: ' . $e->getMessage(), [
                     'sectionId' => $sectionId,
-                    'timestamp' => '2025-02-10 08:06:47',
+                    'timestamp' => '2025-02-10 08:16:59',
                     'user' => 'ibrokxim'
                 ]);
                 return [
@@ -172,7 +114,6 @@ class Bitrix24Service
             }
         });
     }
-
 
     // Получение продукта по ID с кешем
     public function getProductById($id)
@@ -408,82 +349,84 @@ class Bitrix24Service
             try {
                 $images = [];
 
-                // Получаем изображения головного товара
-                $mainImageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
-                    'json' => [
-                        'productId' => $productId,
-                        'select' => [
-                            'id',
-                            'name',
-                            'productId',
-                            'type',
-                            'createTime',
-                            'downloadUrl',
-                            'detailUrl'
+                // Создаем промисы для параллельных запросов
+                $promises = [
+                    'main' => $this->client->postAsync($this->webhookUrl . 'catalog.productImage.list', [
+                        'json' => [
+                            'productId' => $productId,
+                            'select' => [
+                                'id', 'name', 'productId', 'type',
+                                'createTime', 'downloadUrl', 'detailUrl'
+                            ]
                         ]
-                    ]
-                ]);
-
-                $mainImageResult = json_decode($mainImageResponse->getBody()->getContents(), true);
-
-                // Получаем вариации товара
-                $variationsResponse = $this->client->post($this->webhookUrl . 'catalog.product.offer.list', [
-                    'json' => [
-                        'select' => [
-                            'id',
-                            'iblockId',
-                            'name',
-                            'parentId',
-                            'property121' // Размер/фасовка
-                        ],
-                        'filter' => [
-                            'iblockId' => 17,
-                            'parentId' => $productId
+                    ]),
+                    'variations' => $this->client->postAsync($this->webhookUrl . 'catalog.product.offer.list', [
+                        'json' => [
+                            'select' => [
+                                'id', 'iblockId', 'name', 'parentId', 'property121'
+                            ],
+                            'filter' => [
+                                'iblockId' => 17,
+                                'parentId' => $productId
+                            ]
                         ]
-                    ]
-                ]);
+                    ])
+                ];
 
-                $variationsResult = json_decode($variationsResponse->getBody()->getContents(), true);
+                // Выполняем запросы параллельно
+                $responses = \GuzzleHttp\Promise\Utils::unwrap($promises);
 
-                // Если есть вариации, получаем их изображения
+                $mainImageResult = json_decode($responses['main']->getBody()->getContents(), true);
+                $variationsResult = json_decode($responses['variations']->getBody()->getContents(), true);
+
+                // Если есть вариации, получаем их изображения параллельно
                 if (isset($variationsResult['result']['offers']) && !empty($variationsResult['result']['offers'])) {
+                    $variationPromises = [];
                     foreach ($variationsResult['result']['offers'] as $variation) {
-                        $variationImageResponse = $this->client->post($this->webhookUrl . 'catalog.productImage.list', [
-                            'json' => [
-                                'productId' => $variation['id'],
-                                'select' => [
-                                    'id',
-                                    'name',
-                                    'productId',
-                                    'type',
-                                    'createTime',
-                                    'downloadUrl',
-                                    'detailUrl'
+                        $variationPromises[$variation['id']] = $this->client->postAsync(
+                            $this->webhookUrl . 'catalog.productImage.list',
+                            [
+                                'json' => [
+                                    'productId' => $variation['id'],
+                                    'select' => [
+                                        'id', 'name', 'productId', 'type',
+                                        'createTime', 'downloadUrl', 'detailUrl'
+                                    ]
                                 ]
                             ]
-                        ]);
+                        );
+                    }
 
-                        $variationImageResult = json_decode($variationImageResponse->getBody()->getContents(), true);
+                    // Получаем все изображения вариаций параллельно
+                    $variationResponses = \GuzzleHttp\Promise\Utils::unwrap($variationPromises);
 
-                        if (isset($variationImageResult['result']['productImages'])) {
-                            foreach ($variationImageResult['result']['productImages'] as $image) {
-                                $images[] = [
-                                    'id' => $image['id'],
-                                    'name' => $image['name'],
-                                    'detailUrl' => $image['detailUrl'],
-                                    'downloadUrl' => $image['downloadUrl'],
-                                    'type' => $image['type'],
-                                    'createTime' => $image['createTime'],
-                                    'size' => $variation['property121']['valueEnum'] ?? null,
-                                    'variation_id' => $variation['id'],
-                                    'is_variation' => true
-                                ];
+                    foreach ($variationsResult['result']['offers'] as $variation) {
+                        if (isset($variationResponses[$variation['id']])) {
+                            $variationImageResult = json_decode(
+                                $variationResponses[$variation['id']]->getBody()->getContents(),
+                                true
+                            );
+
+                            if (isset($variationImageResult['result']['productImages'])) {
+                                foreach ($variationImageResult['result']['productImages'] as $image) {
+                                    $images[] = [
+                                        'id' => $image['id'],
+                                        'name' => $image['name'],
+                                        'detailUrl' => $image['detailUrl'],
+                                        'downloadUrl' => $image['downloadUrl'],
+                                        'type' => $image['type'],
+                                        'createTime' => $image['createTime'],
+                                        'size' => $variation['property121']['valueEnum'] ?? null,
+                                        'variation_id' => $variation['id'],
+                                        'is_variation' => true
+                                    ];
+                                }
                             }
                         }
                     }
                 }
 
-                // Если нет вариаций или есть, но у них нет изображений, используем изображения головного товара
+                // Если нет изображений вариаций, используем основные изображения
                 if (empty($images) && isset($mainImageResult['result']['productImages'])) {
                     foreach ($mainImageResult['result']['productImages'] as $image) {
                         $images[] = [
@@ -498,19 +441,14 @@ class Bitrix24Service
                     }
                 }
 
-                // Логируем результат
-                Log::info('Product images fetched', [
-                    'productId' => $productId,
-                    'imagesCount' => count($images),
-                    'hasVariations' => isset($variationsResult['result']['offers'])
-                ]);
-
                 return $images;
 
             } catch (\Exception $e) {
                 Log::error('Error getting product images: ' . $e->getMessage(), [
                     'productId' => $productId,
-                    'trace' => $e->getTraceAsString()
+                    'trace' => $e->getTraceAsString(),
+                    'timestamp' => '2025-02-10 08:16:59',
+                    'user' => 'ibrokxim'
                 ]);
                 return [];
             }
