@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Telegram\Bot\Api as TelegramBot;
 class TelegramService
@@ -32,8 +33,8 @@ class TelegramService
             return;
         }
         $message = "🇷🇺 Ваш запрос одобрен! ✅
-Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇\n🇺🇿 So’rovingiz qabul qilindi! ✅
-Marketplace'ga o’tish uchun quyidagi tugmani bosing 👇";
+Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇\n🇺🇿 So'rovingiz qabul qilindi! ✅
+Marketplace'ga o'tish uchun quyidagi tugmani bosing 👇";
 
         $keyboard = [
             'inline_keyboard' => [
@@ -59,7 +60,7 @@ Marketplace'ga o’tish uchun quyidagi tugmani bosing 👇";
         $chatId = $user->telegram_chat_id;
 
         $message = "🇷🇺 ❌ К сожалению, ваш запрос был отклонен.\n\nСвяжитесь с администратором для получения дополнительной информации.
-            🇺🇿❌ Afsuski, so’rovingiz rad etildi.\n\nQo’shimcha ma’lumot uchun administrator bilan bog’laning.";
+            🇺🇿❌ Afsuski, so'rovingiz rad etildi.\n\nQo'shimcha ma'lumot uchun administrator bilan bog'laning.";
 
         $this->bot->sendMessage([
             'chat_id' => $chatId,
@@ -78,9 +79,9 @@ Marketplace'ga o’tish uchun quyidagi tugmani bosing 👇";
 
 Чтобы получить доступ ко всем товарам, нажмите на кнопку ниже 👇 и пройдите регистрацию.
 
-🇺🇿 Marketplace’imizga xush kelibsiz!👋
+🇺🇿 Marketplace'imizga xush kelibsiz!👋
 
-Barcha mahsulotlarni ko’rish uchun quyidagi tugmani bosing 👇 va ro‘yxatdan o‘ting.
+Barcha mahsulotlarni ko'rish uchun quyidagi tugmani bosing 👇 va ro'yxatdan o'ting.
         ";
         $keyboard = [
             'inline_keyboard' => [
@@ -149,4 +150,183 @@ Barcha mahsulotlarni ko’rish uchun quyidagi tugmani bosing 👇 va ro‘yxatda
         }
     }
 
+
+    private function sendTelegramRequest($method, $data)
+    {
+        $url = "https://api.telegram.org/bot{$this->bot}/{$method}";
+        $client = new \GuzzleHttp\Client();
+
+        try {
+            $response = $client->post($url, [
+                'json' => $data
+            ]);
+
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Exception $e) {
+            $currentUser = Auth::user();
+            $userName = $currentUser ? $currentUser->name : 'System';
+
+            \Log::error('Telegram API Error: ' . $e->getMessage(), [
+                'method' => $method,
+                'data' => $data,
+                'timestamp' => now()->format('Y-m-d H:i:s'),
+                'user' => $userName
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Отправляет уведомление пользователю о создании заказа
+     * 
+     * @param \App\Models\Order $order Заказ
+     * @return void
+     */
+    public function sendOrderCreatedNotification($order)
+    {
+        $user = $order->user;
+        if (!$user || !$user->telegram_chat_id) {
+            \Log::warning("Не удалось отправить уведомление о создании заказа: пользователь не найден или отсутствует telegram_chat_id", ['order_id' => $order->id]);
+            return;
+        }
+        
+        // Форматируем информацию о продуктах
+        $productsData = json_decode($order->products, true);
+        $productsText = "";
+        
+        foreach ($productsData as $product) {
+            $productName = $product['name'] ?? 'Неизвестный продукт';
+            $quantity = $product['quantity'] ?? 1;
+            $price = $product['price'] ?? 0;
+            $subtotal = $quantity * $price;
+            
+            $productsText .= "- {$productName} x {$quantity} = " . number_format($subtotal, 0, '.', ' ') . " UZS\n";
+        }
+        
+        $message = "🛒 *Ваш заказ #{$order->id} успешно создан!*\n\n";
+        $message .= "*Информация о заказе:*\n";
+        $message .= $productsText . "\n";
+        $message .= "*Общая сумма:* " . number_format($order->total_amount, 0, '.', ' ') . " UZS\n\n";
+        $message .= "Ваш заказ принят и находится в обработке. Мы свяжемся с вами в ближайшее время.";
+        
+        try {
+            $this->bot->sendMessage([
+                'chat_id' => $user->telegram_chat_id,
+                'text' => $message,
+                'parse_mode' => 'Markdown'
+            ]);
+            \Log::info("Отправлено уведомление о создании заказа", ['order_id' => $order->id, 'user_id' => $user->id]);
+        } catch (\Exception $e) {
+            \Log::error("Ошибка при отправке уведомления о создании заказа: " . $e->getMessage(), [
+                'order_id' => $order->id, 
+                'user_id' => $user->id
+            ]);
+        }
+    }
+    
+    /**
+     * Отправляет уведомление пользователю об изменении статуса заказа
+     * 
+     * @param \App\Models\Order $order Заказ
+     * @param string $oldStatus Старый статус
+     * @param string $newStatus Новый статус
+     * @return void
+     */
+    public function sendOrderStatusChangedNotification($order, $oldStatus, $newStatus)
+    {
+        $user = $order->user;
+        if (!$user || !$user->telegram_chat_id) {
+            \Log::warning("Не удалось отправить уведомление об изменении статуса заказа: пользователь не найден или отсутствует telegram_chat_id", ['order_id' => $order->id]);
+            return;
+        }
+        
+        // Перевод статусов на русский язык
+        $statusTranslations = [
+            'new' => 'Новый',
+            'processed' => 'Обработан',
+            'confirmed' => 'Подтвержден',
+            'shipped' => 'Отправлен',
+            'delivered' => 'Доставлен',
+            'completed' => 'Завершен',
+            'canceled' => 'Отменен',
+            'rejected' => 'Отклонен'
+        ];
+        
+        $newStatusText = $statusTranslations[$newStatus] ?? $newStatus;
+        
+        $message = "🔄 *Обновление статуса заказа #{$order->id}*\n\n";
+        $message .= "Статус вашего заказа изменился на: *{$newStatusText}*\n\n";
+        
+        // Добавляем дополнительную информацию в зависимости от статуса
+        if ($newStatus == 'confirmed') {
+            $message .= "Ваш заказ подтвержден и готовится к отправке.";
+        } elseif ($newStatus == 'shipped') {
+            $message .= "Ваш заказ передан в доставку.";
+        } elseif ($newStatus == 'delivered') {
+            $message .= "Ваш заказ доставлен. Спасибо за покупку!";
+        } elseif ($newStatus == 'completed') {
+            $message .= "Ваш заказ успешно выполнен. Спасибо за покупку!";
+        }
+        
+        try {
+            $this->bot->sendMessage([
+                'chat_id' => $user->telegram_chat_id,
+                'text' => $message,
+                'parse_mode' => 'Markdown'
+            ]);
+            \Log::info("Отправлено уведомление об изменении статуса заказа", [
+                'order_id' => $order->id, 
+                'user_id' => $user->id, 
+                'old_status' => $oldStatus, 
+                'new_status' => $newStatus
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Ошибка при отправке уведомления об изменении статуса заказа: " . $e->getMessage(), [
+                'order_id' => $order->id, 
+                'user_id' => $user->id
+            ]);
+        }
+    }
+    
+    /**
+     * Отправляет уведомление пользователю об отмене заказа
+     * 
+     * @param \App\Models\Order $order Заказ
+     * @param string $reason Причина отмены (опционально)
+     * @return void
+     */
+    public function sendOrderCanceledNotification($order, $reason = null)
+    {
+        $user = $order->user;
+        if (!$user || !$user->telegram_chat_id) {
+            \Log::warning("Не удалось отправить уведомление об отмене заказа: пользователь не найден или отсутствует telegram_chat_id", ['order_id' => $order->id]);
+            return;
+        }
+        
+        $message = "❌ *Заказ #{$order->id} отменен*\n\n";
+        
+        if ($reason) {
+            $message .= "Причина: {$reason}\n\n";
+        }
+        
+        $message .= "Если у вас есть вопросы, пожалуйста, свяжитесь с нашей службой поддержки.";
+        
+        try {
+            $this->bot->sendMessage([
+                'chat_id' => $user->telegram_chat_id,
+                'text' => $message,
+                'parse_mode' => 'Markdown'
+            ]);
+            \Log::info("Отправлено уведомление об отмене заказа", [
+                'order_id' => $order->id, 
+                'user_id' => $user->id, 
+                'reason' => $reason
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Ошибка при отправке уведомления об отмене заказа: " . $e->getMessage(), [
+                'order_id' => $order->id, 
+                'user_id' => $user->id
+            ]);
+        }
+    }
 }

@@ -1,7 +1,9 @@
 <?php
 namespace App\Services;
 
+use Exception;
 use GuzzleHttp\Client;
+use GuzzleHttp\Promise\Utils;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -78,7 +80,7 @@ class Bitrix24Service
                     'total' => 0
                 ];
 
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 \Log::error('Bitrix24 API Error: ' . $e->getMessage());
                 return [
                     'status' => 'error',
@@ -122,7 +124,7 @@ class Bitrix24Service
                     ];
                 }
                 return null;
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 \Log::error('Error getting product: ' . $e->getMessage());
                 return null;
             }
@@ -169,14 +171,13 @@ class Bitrix24Service
                 }
 
                 return $variations;
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 \Log::error('Error getting variations: ' . $e->getMessage());
                 return [];
             }
         });
     }
 
-    // Метод для очистки кеша
     public function clearCache($sectionId = null, $productId = null)
     {
         if ($sectionId) {
@@ -213,7 +214,7 @@ class Bitrix24Service
                 'contact_id' => $result['result'], // ID созданного контакта
                 'status' => 'success'
             ];
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             \Log::error('Bitrix24 Contact Creation Error: ' . $e->getMessage());
 
             return [
@@ -236,7 +237,7 @@ class Bitrix24Service
             ]);
 
             return true;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             \Log::error('Bitrix24 Lead Update Error: ' . $e->getMessage());
             return false;
         }
@@ -248,7 +249,6 @@ class Bitrix24Service
             $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
                 'json' => [
                     'fields' => $dealData,
-                    'params' => ['REGISTER_SONET_EVENT' => 'Y']
                 ]
             ]);
 
@@ -257,7 +257,7 @@ class Bitrix24Service
             Log::debug('Bitrix24 Response:', $result);
 
             if (isset($result['error'])) {
-                throw new \Exception($result['error_description'] ?? 'Unknown Bitrix24 error');
+                throw new Exception($result['error_description'] ?? 'Unknown Bitrix24 error');
             }
 
             return [
@@ -265,8 +265,112 @@ class Bitrix24Service
                 'deal_id' => $result['result']
             ];
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Bitrix24 Deal Error: ' . $e->getMessage());
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    public function createLegalEntity(array $data)
+    {
+        try {
+            // Создаем промисы для параллельных запросов
+            $promises = [
+                'company' => $this->client->postAsync($this->webhookUrl . 'crm.company.add', [
+                    'json' => [
+                        'fields' => [
+                            'TITLE' => $data['company_name'],
+                            'COMPANY_TYPE' => 'CUSTOMER', // тип компании
+                            'INDUSTRY' => $data['industry'] ?? '',
+                            'BANKING_DETAILS' => $data['banking_details'] ?? '',
+                            'ADDRESS' => $data['company_address'] ?? '',
+                            'ADDRESS_LEGAL' => $data['legal_address'] ?? '',
+                            'INN' => $data['inn'] ?? '',
+                            'KPP' => $data['kpp'] ?? '',
+                            'PHONE' => [['VALUE' => $data['phone'], 'VALUE_TYPE' => 'WORK']],
+                            'EMAIL' => [['VALUE' => $data['email'], 'VALUE_TYPE' => 'WORK']],
+                            'COMMENTS' => $data['comments'] ?? '',
+                            'DATE_CREATE' => '2025-02-18 09:01:15',
+                            'CREATED_BY_ID' => 1, // ID создателя
+                        ],
+                        'params' => ['REGISTER_SONET_EVENT' => 'Y']
+                    ]
+                ]),
+                'contact' => $this->client->postAsync($this->webhookUrl . 'crm.contact.add', [
+                    'json' => [
+                        'fields' => [
+                            'NAME' => $data['contact_name'],
+                            'LAST_NAME' => $data['contact_lastname'] ?? '',
+                            'SECOND_NAME' => $data['contact_middlename'] ?? '',
+                            'POST' => $data['position'] ?? '', // должность
+                            'PHONE' => [['VALUE' => $data['contact_phone'], 'VALUE_TYPE' => 'WORK']],
+                            'EMAIL' => [['VALUE' => $data['contact_email'], 'VALUE_TYPE' => 'WORK']],
+                            'TYPE_ID' => 'CLIENT',
+                            'SOURCE_ID' => $data['source_id'] ?? 'SELF',
+                            'DATE_CREATE' => '2025-02-18 09:01:15',
+                            'CREATED_BY_ID' => 1,
+                        ],
+                        'params' => ['REGISTER_SONET_EVENT' => 'Y']
+                    ]
+                ])
+            ];
+
+            // Выполняем запросы параллельно
+            $responses = Utils::unwrap($promises);
+
+            // Получаем результаты
+            $companyResult = json_decode($responses['company']->getBody()->getContents(), true);
+            $contactResult = json_decode($responses['contact']->getBody()->getContents(), true);
+
+            if (!isset($companyResult['result']) || !isset($contactResult['result'])) {
+                throw new Exception('Failed to create company or contact');
+            }
+
+            $companyId = $companyResult['result'];
+            $contactId = $contactResult['result'];
+
+            // Связываем компанию и контакт
+            $bindResponse = $this->client->post($this->webhookUrl . 'crm.company.contact.add', [
+                'json' => [
+                    'id' => $companyId,
+                    'fields' => [
+                        'CONTACT_ID' => $contactId,
+                        'IS_PRIMARY' => 'Y', // Устанавливаем как основной контакт
+                        'SORT' => 10
+                    ]
+                ]
+            ]);
+
+            $bindResult = json_decode($bindResponse->getBody()->getContents(), true);
+
+            // Логируем успешное создание
+            Log::info('Legal entity created successfully', [
+                'company_id' => $companyId,
+                'contact_id' => $contactId,
+                'timestamp' => '2025-02-18 09:01:15',
+                'user' => 'ibrokxim'
+            ]);
+
+            return [
+                'status' => 'success',
+                'data' => [
+                    'company_id' => $companyId,
+                    'contact_id' => $contactId,
+                    'bind_result' => $bindResult['result'] ?? null
+                ]
+            ];
+
+        } catch (Exception $e) {
+            Log::error('Error creating legal entity: ' . $e->getMessage(), [
+                'data' => $data,
+                'timestamp' => '2025-02-18 09:01:15',
+                'user' => 'ibrokxim',
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return [
                 'status' => 'error',
                 'message' => $e->getMessage()
@@ -307,7 +411,7 @@ class Bitrix24Service
             }
 
             return null;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Error getting product price: ' . $e->getMessage(), [
                 'productId' => $productId
             ]);
@@ -422,7 +526,7 @@ class Bitrix24Service
 
                 return $images;
 
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 Log::error('Error getting product images: ' . $e->getMessage(), [
                     'productId' => $productId,
                     'trace' => $e->getTraceAsString()
@@ -430,5 +534,138 @@ class Bitrix24Service
                 return [];
             }
         });
+    }
+
+    public function checkCompanyExists($inn)
+    {
+        $response = $this->client->post($this->webhookUrl . 'crm.company.list', [
+            'json' => [
+                'filter' => ['UF_CRM_INN' => $inn],
+                'select' => ['ID', 'ASSIGNED_BY_ID']
+            ]
+        ]);
+
+        $result = json_decode($response->getBody(), true);
+
+        return [
+            'exists' => !empty($result['result']),
+            'company_id' => $result['result'][0]['ID'] ?? null,
+            'contact_id' => $result['result'][0]['ASSIGNED_BY_ID'] ?? null
+        ];
+    }
+
+    public function checkContactExists($phone)
+    {
+        $response = $this->client->post($this->webhookUrl . 'crm.contact.list', [
+            'json' => [
+                'filter' => ['PHONE' => $phone],
+                'select' => ['ID']
+            ]
+        ]);
+
+        $result = json_decode($response->getBody(), true);
+
+        return [
+            'exists' => !empty($result['result']),
+            'contact_id' => $result['result'][0]['ID'] ?? null
+        ];
+    }
+
+    public function createContact(array $fields)
+    {
+        try {
+            $response = $this->client->post($this->webhookUrl . 'crm.contact.add', [
+                'json' => [
+                    'fields' => $fields,
+                    'params' => ['REGISTER_SONET_EVENT' => 'Y']
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($result['result'])) {
+                return [
+                    'status' => 'success',
+                    'contact_id' => $result['result']
+                ];
+            }
+
+            return [
+                'status' => 'error',
+                'message' => 'Failed to create contact in Bitrix24'
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    public function createCompany(array $fields)
+    {
+        try {
+            $response = $this->client->post($this->webhookUrl . 'crm.company.add', [
+                'json' => [
+                    'fields' => $fields,
+                    'params' => ['REGISTER_SONET_EVENT' => 'Y']
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($result['result'])) {
+                return [
+                    'status' => 'success',
+                    'company_id' => $result['result']
+                ];
+            }
+
+            return [
+                'status' => 'error',
+                'message' => 'Failed to create company in Bitrix24'
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    public function bindContactToCompany($contactId, $companyId, array $additionalFields = [])
+    {
+        try {
+            $response = $this->client->post($this->webhookUrl . 'crm.company.contact.add', [
+                'json' => array_merge([
+                    'id' => $companyId,
+                    'fields' => [
+                        'CONTACT_ID' => $contactId
+                    ]
+                ], $additionalFields)
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($result['result'])) {
+                return [
+                    'status' => 'success',
+                    'bind_id' => $result['result']
+                ];
+            }
+
+            return [
+                'status' => 'error',
+                'message' => 'Failed to bind contact to company in Bitrix24'
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
     }
 }

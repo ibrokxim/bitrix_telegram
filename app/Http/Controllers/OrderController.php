@@ -7,14 +7,17 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use App\Services\Bitrix24Service;
 use Illuminate\Support\Facades\Log;
+use App\Services\TelegramService;
 
 class OrderController extends Controller
 {
     protected $bitrix24Service;
+    protected $telegramService;
 
-    public function __construct(Bitrix24Service $bitrix24Service)
+    public function __construct(Bitrix24Service $bitrix24Service, TelegramService $telegramService)
     {
         $this->bitrix24Service = $bitrix24Service;
+        $this->telegramService = $telegramService;
     }
 
     public function placeOrder(Request $request)
@@ -71,6 +74,9 @@ class OrderController extends Controller
                 'bitrix_deal_id' => $bitrixResponse['deal_id'],
                 'status' => 'processed'
             ]);
+
+            // Отправляем уведомление пользователю о создании заказа
+            $this->telegramService->sendOrderCreatedNotification($order);
 
             return response()->json([
                 'status' => 'success',

@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Services\Bitrix24Service;
-use App\Services\TelegramService;
 use Illuminate\Http\Request;
+use App\Services\TelegramService;
 use Illuminate\Support\Facades\Log;
+use App\Services\Bitrix24\Bitrix24Service;
 
 class TelegramController extends Controller
 {
@@ -29,7 +29,6 @@ class TelegramController extends Controller
             $this->handleStartCommand($update['message']['chat']['id']);
         }
 
-        // Обработка callback-запросов
         if (isset($update['callback_query'])) {
             $this->handleCallbackQuery($update['callback_query']);
         }

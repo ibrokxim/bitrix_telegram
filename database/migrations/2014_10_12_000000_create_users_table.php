@@ -23,6 +23,8 @@ return new class extends Migration
             $table->string('company_name')->nullable();
             $table->string('position')->nullable();
             $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
+            $table->string('bitrix24_company_id')->nullable();
+            $table->string('bitrix24_contact_id')->nullable();
             $table->timestamps();
         });
     }

@@ -2,8 +2,10 @@
 
 namespace App\Exceptions;
 
-use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Throwable;
+use Illuminate\Support\Facades\Auth;
+use App\Services\ErrorHandlerService;
+use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 
 class Handler extends ExceptionHandler
 {
@@ -24,7 +26,24 @@ class Handler extends ExceptionHandler
     public function register(): void
     {
         $this->reportable(function (Throwable $e) {
-            //
+            try {
+                $currentUser = Auth::user();
+                $context = [
+                    'url' => request()->fullUrl(),
+                    'method' => request()->method(),
+                    'inputs' => request()->all(),
+                    'user' => $currentUser ? [
+                        'id' => $currentUser->id,
+                        'name' => $currentUser->name,
+                        'email' => $currentUser->email
+                    ] : null
+                ];
+
+                $errorHandler = app(ErrorHandlerService::class);
+                $errorHandler->handleError($e, $context);
+            } catch (\Exception $logException) {
+                parent::report($logException);
+            }
         });
     }
 }

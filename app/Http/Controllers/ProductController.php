@@ -2,7 +2,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Services\Bitrix24Service;
+use App\Services\Bitrix24\Bitrix24Service;
 use Illuminate\Support\Facades\Session;
 
 class ProductController extends Controller

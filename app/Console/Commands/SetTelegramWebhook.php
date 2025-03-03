@@ -15,7 +15,7 @@ class SetTelegramWebhook extends Command
         $telegram = new Api(env('TELEGRAM_BOT_TOKEN'));
 
         $response = $telegram->setWebhook([
-            'url' => 'https://7352-84-54-76-136.ngrok-free.app/telegram/webhook'
+            'url' => 'https://front.kadyrovclinic.uz/telegram/webhook'
         ]);
 
         if ($response) {
