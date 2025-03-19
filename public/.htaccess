@@ -18,13 +18,20 @@
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
-     Header set Access-Control-Allow-Origin "https://front.kadyrovclinic.uz"
-        Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-        Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
-        Header set Access-Control-Allow-Credentials "true"
-
-        # Handle OPTIONS preflight requests
-        RewriteEngine On
-        RewriteCond %{REQUEST_METHOD} OPTIONS
-        RewriteRule ^(.*)$ $1 [R=200,L]
 </IfModule>
+
+# Remove all CORS headers that might be set by the server
+Header unset Access-Control-Allow-Origin
+Header unset Access-Control-Allow-Methods
+Header unset Access-Control-Allow-Headers
+Header unset Access-Control-Allow-Credentials
+
+# Set correct CORS headers
+Header set Access-Control-Allow-Origin "https://front.kadyrovapp.uz"
+Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+Header set Access-Control-Allow-Credentials "true"
+
+# Handle OPTIONS preflight requests
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
