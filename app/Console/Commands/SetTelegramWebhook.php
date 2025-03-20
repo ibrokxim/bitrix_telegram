@@ -3,25 +3,30 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Telegram\Bot\Api;
+use Telegram\Bot\Api as TelegramBot;
 
 class SetTelegramWebhook extends Command
 {
     protected $signature = 'telegram:set-webhook';
-    protected $description = 'Установить вебхук для Telegram бота';
+    protected $description = 'Set Telegram bot webhook URL';
 
     public function handle()
     {
-        $telegram = new Api(env('TELEGRAM_BOT_TOKEN'));
+        try {
+            $bot = new TelegramBot(config('services.telegram.bot_token'));
+            
+            // Устанавливаем вебхук
+            $webhookUrl = 'https://api.kadyrovapp.uz/api/webhook/telegram';
+            $response = $bot->setWebhook(['url' => $webhookUrl]);
 
-        $response = $telegram->setWebhook([
-            'url' => 'https://api.kadyrovclinic.uz/webhook/telegram'
-        ]);
-
-        if ($response) {
-            $this->info('Webhook успешно установлен!');
-        } else {
-            $this->error('Ошибка при установке вебхука.');
+            if ($response) {
+                $this->info('Вебхук успешно установлен!');
+                $this->info('URL: ' . $webhookUrl);
+            } else {
+                $this->error('Не удалось установить вебхук.');
+            }
+        } catch (\Exception $e) {
+            $this->error('Ошибка: ' . $e->getMessage());
         }
     }
 }
