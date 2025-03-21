@@ -3,6 +3,7 @@
 namespace App\Services\Bitrix24;
 
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 class Bitrix24Service
 {
@@ -12,6 +13,8 @@ class Bitrix24Service
     private $companyService;
     private $dealService;
     private $legalEntityService;
+    private $client;
+    private $webhookUrl;
 
     public function __construct(
         CatalogService $catalogService,
@@ -19,7 +22,9 @@ class Bitrix24Service
         ContactService $contactService,
         CompanyService $companyService,
         DealService $dealService,
-        LegalEntityService $legalEntityService
+        LegalEntityService $legalEntityService,
+        $client,
+        $webhookUrl
     ) {
         $this->catalogService = $catalogService;
         $this->productService = $productService;
@@ -27,6 +32,8 @@ class Bitrix24Service
         $this->companyService = $companyService;
         $this->dealService = $dealService;
         $this->legalEntityService = $legalEntityService;
+        $this->client = $client;
+        $this->webhookUrl = $webhookUrl;
     }
 
     // Методы каталога
@@ -188,5 +195,64 @@ class Bitrix24Service
         }
 
         return true;
+    }
+
+    public function getAllContacts()
+    {
+        $contacts = [];
+        $start = 0;
+
+        do {
+            $response = $this->makeRequest('crm.contact.list', [
+                'start' => $start,
+                'select' => ['ID', 'NAME', 'LAST_NAME', 'PHONE', 'EMAIL']
+            ]);
+
+            if (!empty($response['result'])) {
+                $contacts = array_merge($contacts, $response['result']);
+                $start += 50; // Битрикс24 возвращает по 50 записей
+            }
+        } while (!empty($response['result']));
+
+        return $contacts;
+    }
+
+    public function getAllCompanies()
+    {
+        $companies = [];
+        $start = 0;
+
+        do {
+            $response = $this->makeRequest('crm.company.list', [
+                'start' => $start,
+                'select' => ['ID', 'TITLE', 'PHONE', 'EMAIL', 'UF_CRM_1708963492'] // UF_CRM_1708963492 - поле ИНН
+            ]);
+
+            if (!empty($response['result'])) {
+                $companies = array_merge($companies, $response['result']);
+                $start += 50;
+            }
+        } while (!empty($response['result']));
+
+        return $companies;
+    }
+
+    protected function makeRequest($method, $params = [])
+    {
+        $url = $this->webhookUrl . $method;
+        
+        try {
+            $response = $this->client->post($url, [
+                'json' => $params
+            ]);
+
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Exception $e) {
+            Log::error('Ошибка запроса к Битрикс24: ' . $e->getMessage(), [
+                'method' => $method,
+                'params' => $params
+            ]);
+            throw $e;
+        }
     }
 }

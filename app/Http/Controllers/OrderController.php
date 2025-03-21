@@ -107,20 +107,62 @@ class OrderController extends Controller
 
     public function checkAuth(Request $request)
     {
-        $chatId = $request->input('chat_id');
+        try {
+            $phone = $this->normalizePhone($request->input('phone'));
+            $inn = $request->input('inn');
 
-        $user = User::where('telegram_chat_id', $chatId)->first();
+            // Поиск пользователя по телефону
+            $user = User::where(function($query) use ($phone) {
+                $query->where('phone', $phone)
+                      ->orWhere('bitrix_phone', $phone);
+            })->first();
 
-        if ($user) {
+            // Если пользователь не найден по телефону и есть ИНН, ищем по ИНН
+            if (!$user && $inn) {
+                $user = User::where('inn', $inn)->first();
+            }
+
+            if ($user && $user->status === 'approved') {
+                return response()->json([
+                    'status' => 'success',
+                    'is_registered' => true,
+                    'user' => [
+                        'id' => $user->id,
+                        'first_name' => $user->first_name,
+                        'last_name' => $user->last_name,
+                        'phone' => $user->phone,
+                        'email' => $user->email,
+                        'company_name' => $user->company_name,
+                        'inn' => $user->inn,
+                        'is_legal_entity' => $user->is_legal_entity,
+                    ]
+                ]);
+            }
+
             return response()->json([
                 'status' => 'success',
-                'user' => $user
+                'is_registered' => false
             ]);
-        } else {
+
+        } catch (\Exception $e) {
+            Log::error('Ошибка при проверке авторизации: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Пользователь не авторизован'
-            ], 401);
+                'message' => 'Произошла ошибка при проверке авторизации'
+            ], 500);
         }
+    }
+
+    protected function normalizePhone($phone)
+    {
+        // Удаляем все кроме цифр
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        
+        // Если номер начинается с 8, заменяем на 7
+        if (strlen($phone) === 11 && $phone[0] === '8') {
+            $phone = '7' . substr($phone, 1);
+        }
+        
+        return $phone;
     }
 }
