@@ -108,35 +108,37 @@ class OrderController extends Controller
     public function checkAuth(Request $request)
     {
         try {
+            $chatId = $request->input('chat_id');
             $phone = $this->normalizePhone($request->input('phone'));
-            $inn = $request->input('inn');
 
-            // Поиск пользователя по телефону
-            $user = User::where(function($query) use ($phone) {
-                $query->where('phone', $phone)
-                      ->orWhere('bitrix_phone', $phone);
-            })->first();
-
-            // Если пользователь не найден по телефону и есть ИНН, ищем по ИНН
-            if (!$user && $inn) {
-                $user = User::where('inn', $inn)->first();
-            }
+            // Сначала проверяем по chat_id (для уже зарегистрированных)
+            $user = User::where('telegram_chat_id', $chatId)->first();
 
             if ($user && $user->status === 'approved') {
                 return response()->json([
                     'status' => 'success',
                     'is_registered' => true,
-                    'user' => [
-                        'id' => $user->id,
-                        'first_name' => $user->first_name,
-                        'last_name' => $user->last_name,
-                        'phone' => $user->phone,
-                        'email' => $user->email,
-                        'company_name' => $user->company_name,
-                        'inn' => $user->inn,
-                        'is_legal_entity' => $user->is_legal_entity,
-                    ]
+                    'user' => $this->formatUserData($user)
                 ]);
+            }
+
+            // Если пользователь не найден по chat_id, ищем по телефону
+            if ($phone) {
+                $user = User::where(function($query) use ($phone) {
+                    $query->where('phone', $phone)
+                          ->orWhere('bitrix_phone', $phone);
+                })->first();
+
+                if ($user && $user->status === 'approved') {
+                    // Обновляем telegram_chat_id для пользователя
+                    $user->update(['telegram_chat_id' => $chatId]);
+
+                    return response()->json([
+                        'status' => 'success',
+                        'is_registered' => true,
+                        'user' => $this->formatUserData($user)
+                    ]);
+                }
             }
 
             return response()->json([
@@ -151,6 +153,21 @@ class OrderController extends Controller
                 'message' => 'Произошла ошибка при проверке авторизации'
             ], 500);
         }
+    }
+
+    protected function formatUserData($user)
+    {
+        return [
+            'id' => $user->id,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'phone' => $user->phone,
+            'email' => $user->email,
+            'company_name' => $user->company_name,
+            'inn' => $user->inn,
+            'is_legal_entity' => $user->is_legal_entity,
+            'telegram_chat_id' => $user->telegram_chat_id
+        ];
     }
 
     protected function normalizePhone($phone)
