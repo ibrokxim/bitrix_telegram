@@ -241,7 +241,7 @@ class Bitrix24Service
     {
         // Нормализуем телефон
         $normalizedPhone = preg_replace('/[^0-9]/', '', $phone);
-        
+
         // Форматы для поиска
         $searchFormats = [
             $normalizedPhone,
@@ -249,7 +249,7 @@ class Bitrix24Service
             '998' . substr($normalizedPhone, -9),
             '+998' . substr($normalizedPhone, -9)
         ];
-        
+
         // Поиск среди контактов
         foreach ($searchFormats as $phoneFormat) {
             $contactResponse = $this->makeRequest('crm.contact.list', [
@@ -291,10 +291,88 @@ class Bitrix24Service
         return null;
     }
 
-    protected function makeRequest($method, $params = [])
+    public function findCompanyByInn($inn)
+    {
+        try {
+            $response = $this->makeRequest('crm.company.list', [
+                'filter' => ['UF_CRM_1708963492' => $inn],
+                'select' => ['ID', 'TITLE', 'UF_CRM_1708963492', 'PHONE', 'EMAIL']
+            ]);
+
+            if (!empty($response['result'])) {
+                return $response['result'][0];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Ошибка при поиске компании по ИНН: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function getCompanyContacts($companyId)
+    {
+        try {
+            $response = $this->makeRequest('crm.company.contact.items.get', [
+                'id' => $companyId
+            ]);
+
+            if (!empty($response['result'])) {
+                $contacts = [];
+                foreach ($response['result'] as $contact) {
+                    $contactData = $this->makeRequest('crm.contact.get', [
+                        'id' => $contact['CONTACT_ID']
+                    ]);
+                    if (!empty($contactData['result'])) {
+                        $contacts[] = $contactData['result'];
+                    }
+                }
+                return $contacts;
+            }
+
+            return [];
+        } catch (\Exception $e) {
+            Log::error('Ошибка при получении контактов компании: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getContactCompany($contactId)
+    {
+        try {
+            $response = $this->makeRequest('crm.contact.company.items.get', [
+                'id' => $contactId
+            ]);
+
+            if (!empty($response['result'])) {
+                return $response['result'][0]['COMPANY_ID'];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Ошибка при получении компании контакта: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function getCompany($companyId)
+    {
+        try {
+            $response = $this->makeRequest('crm.company.get', [
+                'id' => $companyId
+            ]);
+
+            return $response['result'] ?? null;
+        } catch (\Exception $e) {
+            Log::error('Ошибка при получении данных компании: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function makeRequest($method, $params = [])
     {
         $url = $this->webhookUrl . $method;
-        
+
         try {
             $response = $this->client->post($url, [
                 'json' => $params

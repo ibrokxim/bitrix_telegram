@@ -246,58 +246,52 @@ class RegistrationController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'phone' => 'required|string'
+                'phone' => 'required_without:inn|string',
+                'inn' => 'required_without:phone|string',
+                'telegram_chat_id' => 'required|string'
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Неверный формат номера телефона',
+                    'message' => 'Ошибка валидации',
                     'errors' => $validator->errors()
                 ], 422);
             }
 
-            // Проверяем существование в Битрикс24
-            $result = $this->bitrix24Service->findUserByPhone($request->phone);
+            $user = null;
 
-            if (!$result) {
+            // Поиск по ИНН
+            if ($request->has('inn')) {
+                $user = User::where('inn', $request->inn)
+                    ->where('status', 'approved')
+                    ->first();
+            }
+
+            // Поиск по телефону, если пользователь еще не найден
+            if (!$user && $request->has('phone')) {
+                // Нормализуем телефон
+                $phone = preg_replace('/[^0-9]/', '', $request->phone);
+                
+                $user = User::where(function($query) use ($phone) {
+                    $query->where('phone', $phone)
+                          ->orWhere('phone', '+' . $phone)
+                          ->orWhere('phone', '998' . substr($phone, -9))
+                          ->orWhere('phone', '+998' . substr($phone, -9));
+                })
+                ->where('status', 'approved')
+                ->first();
+            }
+
+            if (!$user) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Пользователь не найден в системе'
                 ], 404);
             }
 
-            // Создаем или обновляем пользователя в локальной БД
-            if ($result['type'] === 'contact') {
-                $user = User::updateOrCreate(
-                    ['bitrix_contact_id' => $result['data']['ID']],
-                    [
-                        'first_name' => $result['data']['NAME'] ?? '',
-                        'last_name' => $result['data']['LAST_NAME'] ?? '',
-                        'phone' => $request->phone,
-                        'bitrix_phone' => $request->phone,
-                        'email' => $result['data']['EMAIL'][0]['VALUE'] ?? null,
-                        'status' => 'approved',
-                        'last_sync_at' => now(),
-                        'telegram_chat_id' => $request->telegram_chat_id ?? null,
-                    ]
-                );
-            } else {
-                $user = User::updateOrCreate(
-                    ['bitrix_company_id' => $result['data']['ID']],
-                    [
-                        'company_name' => $result['data']['TITLE'] ?? '',
-                        'inn' => $result['data']['UF_CRM_1708963492'] ?? null,
-                        'is_legal_entity' => true,
-                        'phone' => $request->phone,
-                        'bitrix_phone' => $request->phone,
-                        'email' => $result['data']['EMAIL'][0]['VALUE'] ?? null,
-                        'status' => 'approved',
-                        'last_sync_at' => now(),
-                        'telegram_chat_id' => $request->telegram_chat_id ?? null,
-                    ]
-                );
-            }
+            // Обновляем telegram_chat_id
+            $user->update(['telegram_chat_id' => $request->telegram_chat_id]);
 
             // Создаем токен для API
             $token = $user->createToken('auth-token')->plainTextToken;
@@ -311,7 +305,8 @@ class RegistrationController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Ошибка при верификации пользователя: ' . $e->getMessage(), [
-                'phone' => $request->phone,
+                'phone' => $request->phone ?? null,
+                'inn' => $request->inn ?? null,
                 'trace' => $e->getTraceAsString()
             ]);
 
