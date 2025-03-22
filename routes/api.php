@@ -6,6 +6,7 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\BitrixWebhookController;
+use App\Http\Controllers\Auth\AuthController;
 
 Route::get('/catalogs', [ProductController::class, 'getCatalogs']);
 Route::get('/product/{id}', [ProductController::class, 'getProductById']);
@@ -20,3 +21,4 @@ Route::post('/place-order', [OrderController::class, 'placeOrder']);
 Route::post('/check-auth', [OrderController::class, 'checkAuth']);
 Route::post('/webhook/telegram', [TelegramController::class, 'handleWebhook']);
 Route::post('/webhook/bitrix/deal', [BitrixWebhookController::class, 'handleDealUpdate']);
+Route::post('/verify-phone', [RegistrationController::class, 'verifyExistingUser']);

@@ -36,4 +36,8 @@ return [
         'admin_chat_id' => env('TELEGRAM_ADMIN_GROUP_ID'),
     ],
 
+    'bitrix24' => [
+        'webhook_url' => env('BITRIX24_WEBHOOK_URL'),
+    ],
+
 ];

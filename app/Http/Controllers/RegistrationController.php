@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Services\TelegramService;
 use Illuminate\Support\Facades\Validator;
 use App\Services\Bitrix24\Bitrix24Service;
+use Illuminate\Support\Facades\Log;
 
 class RegistrationController extends Controller
 {
@@ -86,55 +87,6 @@ class RegistrationController extends Controller
         }
     }
 
-//    public function processUserRequest(Request $request)
-//    {
-//        $action = $request->input('action');
-//        $userId = $request->input('user_id');
-//
-//        $user = User::findOrFail($userId);
-//
-//        if ($action === 'approve') {
-//            $user->status = 'approved';
-//            $user->save();
-//
-//            $contactData = [
-//                'NAME' => $user->name, // Обязательное поле
-//                'LAST_NAME' => $user->surname ?? '', // Фамилия (если есть)
-//                'PHONE' => [['VALUE' => $user->phone, 'VALUE_TYPE' => 'WORK']], // Телефон
-//                'SOURCE_ID' => 'WEB', // Источник
-//                'ASSIGNED_BY_ID' => 1, // ID ответственного
-//                'TYPE_ID' => 'CLIENT', // Тип контакта
-//                'OPENED' => 'Y', // Доступен для всех
-//                'COMMENTS' => 'Клиент зарегистрирован через мини-приложение', // Комментарий
-//                'UF_CRM_IS_LEGAL_ENTITY' => $user->is_legal_entity ? 'Да' : 'Нет', // Пользовательское поле
-//                'UF_CRM_INN' => $user->inn ?? '', // Пользовательское поле (ИНН)
-//                'UF_CRM_COMPANY_NAME' => $user->company_name ?? '', // Пользовательское поле (Название компании)
-//                'UF_CRM_POSITION' => $user->position ?? '' // Пользовательское поле (Должность)
-//            ];
-//
-//            $leadResponse = $this->bitrix24Service->createLead($contactData);
-//
-//            if ($leadResponse['status'] === 'error') {
-//                \Log::error("Ошибка при создании лида в Битрикс24: " . $leadResponse['message']);
-//            }
-//
-//            $this->telegramService->sendApprovalMessage($user);
-//
-//            return response()->json([
-//                'message' => 'Пользователь одобрен',
-//                'mini_app_link' => "https://t.me/kadyrov_urologbot/market"
-//            ]);
-//        } else {
-//            $user->status = 'rejected';
-//            $user->save();
-//
-//            $this->telegramService->sendRejectionMessage($user);
-//
-//            return response()->json([
-//                'message' => 'Пользователь отклонен'
-//            ]);
-//        }
-//    }
     public function processUserRequest(Request $request)
     {
         $action = $request->input('action');
@@ -255,7 +207,6 @@ class RegistrationController extends Controller
         }
     }
 
-
     private function sendTelegramNotification(User $user )
     {
         $message = "🆕 Новая заявка на доступ:\n\n" .
@@ -289,5 +240,85 @@ class RegistrationController extends Controller
         ];
 
         $this->telegramService->sendMessageToAdminGroup($message, $keyboard);
+    }
+
+    public function verifyExistingUser(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'phone' => 'required|string'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Неверный формат номера телефона',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            // Проверяем существование в Битрикс24
+            $result = $this->bitrix24Service->findUserByPhone($request->phone);
+
+            if (!$result) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Пользователь не найден в системе'
+                ], 404);
+            }
+
+            // Создаем или обновляем пользователя в локальной БД
+            if ($result['type'] === 'contact') {
+                $user = User::updateOrCreate(
+                    ['bitrix_contact_id' => $result['data']['ID']],
+                    [
+                        'first_name' => $result['data']['NAME'] ?? '',
+                        'last_name' => $result['data']['LAST_NAME'] ?? '',
+                        'phone' => $request->phone,
+                        'bitrix_phone' => $request->phone,
+                        'email' => $result['data']['EMAIL'][0]['VALUE'] ?? null,
+                        'status' => 'approved',
+                        'last_sync_at' => now(),
+                        'telegram_chat_id' => $request->telegram_chat_id ?? null,
+                    ]
+                );
+            } else {
+                $user = User::updateOrCreate(
+                    ['bitrix_company_id' => $result['data']['ID']],
+                    [
+                        'company_name' => $result['data']['TITLE'] ?? '',
+                        'inn' => $result['data']['UF_CRM_1708963492'] ?? null,
+                        'is_legal_entity' => true,
+                        'phone' => $request->phone,
+                        'bitrix_phone' => $request->phone,
+                        'email' => $result['data']['EMAIL'][0]['VALUE'] ?? null,
+                        'status' => 'approved',
+                        'last_sync_at' => now(),
+                        'telegram_chat_id' => $request->telegram_chat_id ?? null,
+                    ]
+                );
+            }
+
+            // Создаем токен для API
+            $token = $user->createToken('auth-token')->plainTextToken;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Пользователь успешно верифицирован',
+                'user' => $user,
+                'token' => $token
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Ошибка при верификации пользователя: ' . $e->getMessage(), [
+                'phone' => $request->phone,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Произошла ошибка при проверке: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

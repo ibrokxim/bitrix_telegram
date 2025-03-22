@@ -237,6 +237,60 @@ class Bitrix24Service
         return $companies;
     }
 
+    public function findUserByPhone($phone)
+    {
+        // Нормализуем телефон
+        $normalizedPhone = preg_replace('/[^0-9]/', '', $phone);
+        
+        // Форматы для поиска
+        $searchFormats = [
+            $normalizedPhone,
+            '+' . $normalizedPhone,
+            '998' . substr($normalizedPhone, -9),
+            '+998' . substr($normalizedPhone, -9)
+        ];
+        
+        // Поиск среди контактов
+        foreach ($searchFormats as $phoneFormat) {
+            $contactResponse = $this->makeRequest('crm.contact.list', [
+                'filter' => [
+                    'PHONE' => $phoneFormat
+                ],
+                'select' => ['ID', 'NAME', 'LAST_NAME', 'PHONE', 'EMAIL']
+            ]);
+
+            if (!empty($contactResponse['result'])) {
+                $contact = $contactResponse['result'][0];
+                return [
+                    'type' => 'contact',
+                    'data' => $contact,
+                    'found_by' => $phoneFormat
+                ];
+            }
+        }
+
+        // Поиск среди компаний
+        foreach ($searchFormats as $phoneFormat) {
+            $companyResponse = $this->makeRequest('crm.company.list', [
+                'filter' => [
+                    'PHONE' => $phoneFormat
+                ],
+                'select' => ['ID', 'TITLE', 'PHONE', 'EMAIL', 'UF_CRM_1708963492']
+            ]);
+
+            if (!empty($companyResponse['result'])) {
+                $company = $companyResponse['result'][0];
+                return [
+                    'type' => 'company',
+                    'data' => $company,
+                    'found_by' => $phoneFormat
+                ];
+            }
+        }
+
+        return null;
+    }
+
     protected function makeRequest($method, $params = [])
     {
         $url = $this->webhookUrl . $method;

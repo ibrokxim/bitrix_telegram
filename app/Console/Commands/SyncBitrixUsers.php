@@ -9,8 +9,8 @@ use Illuminate\Support\Facades\Log;
 
 class SyncBitrixUsers extends Command
 {
-    protected $signature = 'bitrix:sync-users';
-    protected $description = 'Синхронизация пользователей из Битрикс24';
+    protected $signature = 'bitrix:check-user {phone : Номер телефона для проверки}';
+    protected $description = 'Проверка пользователя в Битрикс24 по номеру телефона';
 
     protected $bitrix24Service;
 
@@ -22,121 +22,48 @@ class SyncBitrixUsers extends Command
 
     public function handle()
     {
-        $this->info('Начинаем синхронизацию пользователей из Битрикс24...');
+        $phone = $this->argument('phone');
+        $this->info('Проверяем пользователя с номером: ' . $phone);
 
         try {
-            // Получаем контакты
-            $contacts = $this->bitrix24Service->getAllContacts();
-            $this->info('Получено контактов: ' . count($contacts));
+            $result = $this->bitrix24Service->findUserByPhone($phone);
 
-            foreach ($contacts as $contact) {
-                $this->syncContact($contact);
+            if ($result) {
+                $this->info('Пользователь найден в Битрикс24!');
+                $this->info('Найден по номеру: ' . $result['found_by']);
+                
+                if ($result['type'] === 'contact') {
+                    $this->info('Тип: Контакт');
+                    $this->info('Имя: ' . ($result['data']['NAME'] ?? 'Не указано'));
+                    $this->info('Фамилия: ' . ($result['data']['LAST_NAME'] ?? 'Не указано'));
+                    if (!empty($result['data']['PHONE'])) {
+                        $this->info('Телефоны в Битрикс24:');
+                        foreach ($result['data']['PHONE'] as $phone) {
+                            $this->info('- ' . $phone['VALUE']);
+                        }
+                    }
+                } else {
+                    $this->info('Тип: Компания');
+                    $this->info('Название: ' . ($result['data']['TITLE'] ?? 'Не указано'));
+                    $this->info('ИНН: ' . ($result['data']['UF_CRM_1708963492'] ?? 'Не указано'));
+                    if (!empty($result['data']['PHONE'])) {
+                        $this->info('Телефоны в Битрикс24:');
+                        foreach ($result['data']['PHONE'] as $phone) {
+                            $this->info('- ' . $phone['VALUE']);
+                        }
+                    }
+                }
+
+                return 0;
             }
 
-            // Получаем компании
-            $companies = $this->bitrix24Service->getAllCompanies();
-            $this->info('Получено компаний: ' . count($companies));
+            $this->warn('Пользователь не найден в Битрикс24');
+            return 1;
 
-            foreach ($companies as $company) {
-                $this->syncCompany($company);
-            }
-
-            $this->info('Синхронизация завершена успешно!');
         } catch (\Exception $e) {
-            $this->error('Ошибка при синхронизации: ' . $e->getMessage());
-            Log::error('Ошибка при синхронизации с Битрикс24: ' . $e->getMessage());
+            $this->error('Ошибка при проверке: ' . $e->getMessage());
+            Log::error('Ошибка при проверке пользователя в Битрикс24: ' . $e->getMessage());
+            return 1;
         }
-    }
-
-    protected function syncContact($contact)
-    {
-        $phone = $this->extractPhone($contact['PHONE'] ?? []);
-        $email = $this->extractEmail($contact['EMAIL'] ?? []);
-
-        if (!$phone) {
-            return;
-        }
-
-        User::updateOrCreate(
-            ['bitrix_contact_id' => $contact['ID']],
-            [
-                'first_name' => $contact['NAME'] ?? '',
-                'last_name' => $contact['LAST_NAME'] ?? '',
-                'phone' => $phone,
-                'bitrix_phone' => $phone,
-                'email' => $email,
-                'bitrix_email' => $email,
-                'status' => 'approved',
-                'last_sync_at' => now(),
-            ]
-        );
-    }
-
-    protected function syncCompany($company)
-    {
-        $phone = $this->extractPhone($company['PHONE'] ?? []);
-        $email = $this->extractEmail($company['EMAIL'] ?? []);
-
-        if (!$phone) {
-            return;
-        }
-
-        User::updateOrCreate(
-            ['bitrix_company_id' => $company['ID']],
-            [
-                'company_name' => $company['TITLE'] ?? '',
-                'inn' => $company['UF_CRM_1708963492'] ?? null, // ID поля ИНН
-                'is_legal_entity' => true,
-                'phone' => $phone,
-                'bitrix_phone' => $phone,
-                'email' => $email,
-                'bitrix_email' => $email,
-                'status' => 'approved',
-                'last_sync_at' => now(),
-            ]
-        );
-    }
-
-    protected function extractPhone($phones)
-    {
-        if (empty($phones)) {
-            return null;
-        }
-
-        foreach ($phones as $phone) {
-            if (!empty($phone['VALUE'])) {
-                return $this->normalizePhone($phone['VALUE']);
-            }
-        }
-
-        return null;
-    }
-
-    protected function extractEmail($emails)
-    {
-        if (empty($emails)) {
-            return null;
-        }
-
-        foreach ($emails as $email) {
-            if (!empty($email['VALUE'])) {
-                return $email['VALUE'];
-            }
-        }
-
-        return null;
-    }
-
-    protected function normalizePhone($phone)
-    {
-        // Удаляем все кроме цифр
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-        
-        // Если номер начинается с 8, заменяем на 7
-        if (strlen($phone) === 11 && $phone[0] === '8') {
-            $phone = '7' . substr($phone, 1);
-        }
-        
-        return $phone;
     }
 } 
