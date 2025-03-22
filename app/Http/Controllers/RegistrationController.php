@@ -253,7 +253,7 @@ class RegistrationController extends Controller
 
             if ($validator->fails()) {
                 return response()->json([
-                    'success' => false,
+                    'status' => 'error',
                     'message' => 'Ошибка валидации',
                     'errors' => $validator->errors()
                 ], 422);
@@ -285,7 +285,7 @@ class RegistrationController extends Controller
 
             if (!$user) {
                 return response()->json([
-                    'success' => false,
+                    'status' => 'error',
                     'message' => 'Пользователь не найден в системе'
                 ], 404);
             }
@@ -297,9 +297,21 @@ class RegistrationController extends Controller
             $token = $user->createToken('auth-token')->plainTextToken;
 
             return response()->json([
-                'success' => true,
+                'status' => 'approved',
                 'message' => 'Пользователь успешно верифицирован',
-                'user' => $user,
+                'user' => [
+                    'id' => $user->id,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'second_name' => $user->second_name,
+                    'phone' => $user->phone,
+                    'email' => $user->email,
+                    'company_name' => $user->company_name,
+                    'inn' => $user->inn,
+                    'is_legal_entity' => $user->is_legal_entity,
+                    'telegram_chat_id' => $user->telegram_chat_id,
+                    'status' => $user->status
+                ],
                 'token' => $token
             ]);
 
@@ -311,7 +323,7 @@ class RegistrationController extends Controller
             ]);
 
             return response()->json([
-                'success' => false,
+                'status' => 'error',
                 'message' => 'Произошла ошибка при проверке: ' . $e->getMessage()
             ], 500);
         }

@@ -159,6 +159,7 @@ class OrderController extends Controller
     {
         return [
             'id' => $user->id,
+            'status' => $user->status,
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
             'phone' => $user->phone,
@@ -174,12 +175,12 @@ class OrderController extends Controller
     {
         // Удаляем все кроме цифр
         $phone = preg_replace('/[^0-9]/', '', $phone);
-        
+
         // Если номер начинается с 8, заменяем на 7
         if (strlen($phone) === 11 && $phone[0] === '8') {
             $phone = '7' . substr($phone, 1);
         }
-        
+
         return $phone;
     }
 }
