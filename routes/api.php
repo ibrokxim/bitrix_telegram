@@ -22,3 +22,4 @@ Route::post('/check-auth', [OrderController::class, 'checkAuth']);
 Route::post('/webhook/telegram', [TelegramController::class, 'handleWebhook']);
 Route::post('/webhook/bitrix/deal', [BitrixWebhookController::class, 'handleDealUpdate']);
 Route::post('/verify-phone', [RegistrationController::class, 'verifyExistingUser']);
+Route::get('/users/list', [RegistrationController::class, 'listUsers']);

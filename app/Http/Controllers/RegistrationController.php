@@ -328,4 +328,35 @@ class RegistrationController extends Controller
             ], 500);
         }
     }
+
+    public function listUsers()
+    {
+        try {
+            $users = User::where('status', 'approved')->get();
+            
+            return response()->json([
+                'status' => 'success',
+                'users' => $users->map(function($user) {
+                    return [
+                        'id' => $user->id,
+                        'first_name' => $user->first_name,
+                        'last_name' => $user->last_name,
+                        'second_name' => $user->second_name,
+                        'phone' => $user->phone,
+                        'company_name' => $user->company_name,
+                        'inn' => $user->inn,
+                        'is_legal_entity' => $user->is_legal_entity,
+                        'status' => $user->status,
+                        'created_at' => $user->created_at
+                    ];
+                })
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Ошибка при получении списка пользователей: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Произошла ошибка при получении списка пользователей'
+            ], 500);
+        }
+    }
 }
