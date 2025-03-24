@@ -55,12 +55,9 @@ class OrderController extends Controller
                 'COMMENTS' => "Заказ из Telegram бота\nПользователь: {$user->first_name} {$user->last_name}\nТелефон: {$user->phone}",
                 'PRODUCTS' => array_map(function ($item) {
                     return [
-                        'PRODUCT_ID' => $item['id'],
-                        'PRODUCT_NAME' => $item['name'],
-                        'PRICE' => $item['price'],
-                        'QUANTITY' => $item['quantity'],
-                        'MEASURE_CODE' => 796,
-                        'CURRENCY_ID' => 'UZS'
+                        'name' => $item['name'],
+                        'price' => (float)$item['price'],
+                        'quantity' => (float)$item['quantity']
                     ];
                 }, $request->cart)
             ];

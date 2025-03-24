@@ -34,15 +34,49 @@ class DealService extends Bitrix24BaseService
 
             // Если есть товары, добавляем их к сделке
             if (!empty($products)) {
+                // Форматируем товары для Битрикс24
+                $formattedProducts = array_map(function ($product) {
+                    return [
+                        'PRODUCT_NAME' => $product['name'],
+                        'PRICE' => (float)$product['price'],
+                        'QUANTITY' => (float)$product['quantity'],
+                        'MEASURE_CODE' => 796, // Код единицы измерения (шт)
+                        'MEASURE_NAME' => 'шт',
+                        'TAX_INCLUDED' => 'N', // Налог не включен
+                        'TAX_RATE' => 0, // Ставка налога
+                        'CURRENCY_ID' => 'UZS',
+                        // Расчет цен
+                        'PRICE_EXCLUSIVE' => (float)$product['price'], // Цена без налогов
+                        'PRICE_NETTO' => (float)$product['price'], // Цена без скидок и налогов
+                        'PRICE_BRUTTO' => (float)$product['price'], // Цена с налогами
+                        // Скидки
+                        'DISCOUNT_TYPE_ID' => 2, // Процентная скидка
+                        'DISCOUNT_RATE' => 0, // Процент скидки
+                        'DISCOUNT_SUM' => 0, // Сумма скидки
+                    ];
+                }, $products);
+
                 $productsResponse = $this->client->post($this->webhookUrl . 'crm.deal.productrows.set', [
                     'json' => [
                         'id' => $dealId,
-                        'rows' => $products
+                        'rows' => $formattedProducts
                     ]
                 ]);
 
                 $productsResult = json_decode($productsResponse->getBody()->getContents(), true);
-                Log::debug('Bitrix24 Products Response:', $productsResult);
+                
+                if (isset($productsResult['error'])) {
+                    Log::error('Ошибка при добавлении товаров к сделке:', [
+                        'deal_id' => $dealId,
+                        'error' => $productsResult['error_description'] ?? 'Unknown error',
+                        'products' => $formattedProducts
+                    ]);
+                } else {
+                    Log::debug('Товары успешно добавлены к сделке:', [
+                        'deal_id' => $dealId,
+                        'products_count' => count($formattedProducts)
+                    ]);
+                }
             }
 
             return [
@@ -51,7 +85,10 @@ class DealService extends Bitrix24BaseService
             ];
 
         } catch (Exception $e) {
-            Log::error('Bitrix24 Deal Error: ' . $e->getMessage());
+            Log::error('Bitrix24 Deal Error: ' . $e->getMessage(), [
+                'deal_data' => $dealData,
+                'products' => $products ?? []
+            ]);
             return [
                 'status' => 'error',
                 'message' => $e->getMessage()
