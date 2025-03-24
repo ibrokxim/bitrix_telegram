@@ -91,6 +91,11 @@ class Bitrix24Service
         return $this->dealService->createDeal($dealData);
     }
 
+    public function getDeal($dealId)
+    {
+        return $this->dealService->getDeal($dealId);
+    }
+
     public function createLead(array $leadData)
     {
         return $this->dealService->createLead($leadData);
