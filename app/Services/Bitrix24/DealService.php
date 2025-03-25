@@ -37,22 +37,23 @@ class DealService extends Bitrix24BaseService
                 // Форматируем товары для Битрикс24
                 $formattedProducts = array_map(function ($product) {
                     return [
+                        'PRODUCT_ID' => $product['id'],
                         'PRODUCT_NAME' => $product['name'],
                         'PRICE' => (float)$product['price'],
                         'QUANTITY' => (float)$product['quantity'],
-                        'MEASURE_CODE' => 796, // Код единицы измерения (шт)
-                        'MEASURE_NAME' => 'шт',
-                        'TAX_INCLUDED' => 'N', // Налог не включен
-                        'TAX_RATE' => 0, // Ставка налога
+//                        'MEASURE_CODE' => 796, // Код единицы измерения (шт)
+//                        'MEASURE_NAME' => 'шт',
+//                        'TAX_INCLUDED' => 'N', // Налог не включен
+//                        'TAX_RATE' => 0, // Ставка налога
                         'CURRENCY_ID' => 'UZS',
                         // Расчет цен
-                        'PRICE_EXCLUSIVE' => (float)$product['price'], // Цена без налогов
-                        'PRICE_NETTO' => (float)$product['price'], // Цена без скидок и налогов
-                        'PRICE_BRUTTO' => (float)$product['price'], // Цена с налогами
-                        // Скидки
-                        'DISCOUNT_TYPE_ID' => 2, // Процентная скидка
-                        'DISCOUNT_RATE' => 0, // Процент скидки
-                        'DISCOUNT_SUM' => 0, // Сумма скидки
+//                        'PRICE_EXCLUSIVE' => (float)$product['price'], // Цена без налогов
+//                        'PRICE_NETTO' => (float)$product['price'], // Цена без скидок и налогов
+//                        'PRICE_BRUTTO' => (float)$product['price'], // Цена с налогами
+//                        // Скидки
+//                        'DISCOUNT_TYPE_ID' => 2, // Процентная скидка
+//                        'DISCOUNT_RATE' => 0, // Процент скидки
+//                        'DISCOUNT_SUM' => 0, // Сумма скидки
                     ];
                 }, $products);
 
@@ -64,7 +65,7 @@ class DealService extends Bitrix24BaseService
                 ]);
 
                 $productsResult = json_decode($productsResponse->getBody()->getContents(), true);
-                
+
                 if (isset($productsResult['error'])) {
                     Log::error('Ошибка при добавлении товаров к сделке:', [
                         'deal_id' => $dealId,
