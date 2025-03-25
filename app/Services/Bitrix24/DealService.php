@@ -111,35 +111,4 @@ class DealService extends Bitrix24BaseService
             ];
         }
     }
-
-    /**
-     * Привязывает событие обновления сделки в Битрикс24 к обработчику
-     */
-    public function bindDealUpdateEvent()
-    {
-        try {
-            $response = $this->client->post($this->webhookUrl . 'event.bind', [
-                'json' => [
-                    'event' => 'ONCRMDEALUPDATE',
-                    'handler' => route('api.bitrix24.event'),
-                    'auth_type' => 1
-                ]
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true);
-            
-            if (isset($result['error'])) {
-                throw new Exception($result['error_description'] ?? 'Unknown Bitrix24 error');
-            }
-
-            Log::info('Bitrix24 event binding result:', $result);
-            
-            return $result;
-        } catch (Exception $e) {
-            Log::error('Error binding Bitrix24 event: ' . $e->getMessage(), [
-                'exception' => $e
-            ]);
-            throw $e;
-        }
-    }
 }
