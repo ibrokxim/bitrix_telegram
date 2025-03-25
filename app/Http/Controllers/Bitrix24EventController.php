@@ -30,20 +30,18 @@ class Bitrix24EventController extends Controller
             'ip' => $request->ip()
         ]);
 
-        // В Bitrix24 токен передается в параметре auth[application_token]
-        $token = $request->query('auth')['application_token'] ?? null;
+        // Проверяем токен из query параметров
+        $token = $request->query('token') ?? $request->query('auth.application_token');
 
         Log::info('Проверка токена:', [
             'received_token' => $token,
-            'expected_token' => $this->webhookToken,
-            'auth_params' => $request->query('auth')
+            'expected_token' => $this->webhookToken
         ]);
 
         if ($token !== $this->webhookToken) {
             Log::warning('Неверный токен авторизации', [
                 'ip' => $request->ip(),
-                'received_token' => $token,
-                'auth_params' => $request->query('auth')
+                'token' => $token
             ]);
             return response()->json(['error' => 'Unauthorized'], 401);
         }
@@ -53,7 +51,7 @@ class Bitrix24EventController extends Controller
             if ($request->query('event') === 'ONCRMDEALUPDATE') {
                 // Получаем данные из query параметров
                 $fields = $request->query('data.FIELDS', []);
-                
+
                 Log::info('Получены данные о сделке:', [
                     'event' => $request->query('event'),
                     'fields' => $fields,
