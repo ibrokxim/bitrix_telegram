@@ -44,22 +44,20 @@ class OrderController extends Controller
 
             // Формируем данные для Битрикс24
             $bitrixData = [
-                'TITLE' => "Заказ #{$order->id} от {$user->first_name} {$user->last_name}",
+                'TITLE' => "Заказ #{$order->id} от {$user->first_name} {$user->last_name} ",
                 'TYPE_ID' => 'SALE',
                 'STAGE_ID' => 'NEW',
                 'CURRENCY_ID' => 'UZS',
                 'OPPORTUNITY' => $request->total_amount,
-                'ASSIGNED_BY_ID' => config('services.bitrix24.default_assigned_id', 1),
+                'ASSIGNED_BY_ID' => 3,
                 'CONTACT_ID' => $user->bitrix_contact_id,
-                'UF_CRM_1708955621' => $user->phone,
-                'COMMENTS' => "Заказ из Telegram бота\nПользователь: {$user->first_name} {$user->last_name}\nТелефон: {$user->phone}",
-                'PRODUCTS' => array_map(function ($item) {
-                    return [
-                        'name' => $item['name'],
-                        'price' => (float)$item['price'],
-                        'quantity' => (float)$item['quantity']
-                    ];
-                }, $request->cart)
+                'PRODUCT_ROWS' => $this->formatProducts($request->cart),
+                'COMMENTS' => json_encode([
+                    'Источник' => 'Telegram бот',
+                    'Пользователь' => $user->first_name . ' ' . $user->last_name,
+                    'Телефон' => $user->phone,
+
+                ])
             ];
 
             Log::info('Sending to Bitrix24:', $bitrixData);

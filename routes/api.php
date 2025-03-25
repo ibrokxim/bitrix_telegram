@@ -7,6 +7,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\BitrixWebhookController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Bitrix24EventController;
 
 Route::get('/catalogs', [ProductController::class, 'getCatalogs']);
 Route::get('/product/{id}', [ProductController::class, 'getProductById']);
@@ -23,3 +24,4 @@ Route::post('/webhook/telegram', [TelegramController::class, 'handleWebhook']);
 Route::post('/webhook/bitrix/deal', [BitrixWebhookController::class, 'handleDealUpdate']);
 Route::post('/verify-phone', [RegistrationController::class, 'verifyExistingUser']);
 Route::get('/users/list', [RegistrationController::class, 'listUsers']);
+Route::post('/bitrix24/event', [Bitrix24EventController::class, 'handleEvent'])->name('api.bitrix24.event');

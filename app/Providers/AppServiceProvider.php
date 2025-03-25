@@ -12,6 +12,8 @@ use App\Services\Bitrix24\DealService;
 use App\Services\Bitrix24\LegalEntityService;
 use GuzzleHttp\Client;
 use App\Services\ErrorHandlerService;
+use App\Models\User;
+use App\Observers\UserObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -46,6 +48,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        User::observe(UserObserver::class);
     }
 }

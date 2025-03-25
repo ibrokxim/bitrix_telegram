@@ -6,6 +6,8 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Telegram\Bot\Api as TelegramBot;
+use Illuminate\Support\Facades\Http;
+
 class TelegramService
 {
     protected $bot;

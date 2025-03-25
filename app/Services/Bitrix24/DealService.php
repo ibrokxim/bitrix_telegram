@@ -10,9 +10,10 @@ class DealService extends Bitrix24BaseService
     public function createDeal(array $dealData)
     {
         try {
-            // Отдельно обрабатываем товары
+            // Извлекаем товары и контакт из данных сделки
             $products = $dealData['PRODUCTS'] ?? [];
-            unset($dealData['PRODUCTS']);
+            $contactId = $dealData['CONTACT_ID'] ?? null;
+            unset($dealData['PRODUCTS'], $dealData['CONTACT_ID']);
 
             // Создаем сделку
             $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
@@ -24,36 +25,21 @@ class DealService extends Bitrix24BaseService
 
             $result = json_decode($response->getBody()->getContents(), true);
 
-            Log::debug('Bitrix24 Deal Response:', $result);
-
             if (isset($result['error'])) {
                 throw new Exception($result['error_description'] ?? 'Unknown Bitrix24 error');
             }
 
             $dealId = $result['result'];
 
-            // Если есть товары, добавляем их к сделке
+            // Добавляем товары к сделке, если они указаны
             if (!empty($products)) {
-                // Форматируем товары для Битрикс24
                 $formattedProducts = array_map(function ($product) {
                     return [
                         'PRODUCT_ID' => $product['id'],
                         'PRODUCT_NAME' => $product['name'],
                         'PRICE' => (float)$product['price'],
                         'QUANTITY' => (float)$product['quantity'],
-//                        'MEASURE_CODE' => 796, // Код единицы измерения (шт)
-//                        'MEASURE_NAME' => 'шт',
-//                        'TAX_INCLUDED' => 'N', // Налог не включен
-//                        'TAX_RATE' => 0, // Ставка налога
                         'CURRENCY_ID' => 'UZS',
-                        // Расчет цен
-//                        'PRICE_EXCLUSIVE' => (float)$product['price'], // Цена без налогов
-//                        'PRICE_NETTO' => (float)$product['price'], // Цена без скидок и налогов
-//                        'PRICE_BRUTTO' => (float)$product['price'], // Цена с налогами
-//                        // Скидки
-//                        'DISCOUNT_TYPE_ID' => 2, // Процентная скидка
-//                        'DISCOUNT_RATE' => 0, // Процент скидки
-//                        'DISCOUNT_SUM' => 0, // Сумма скидки
                     ];
                 }, $products);
 
@@ -80,15 +66,44 @@ class DealService extends Bitrix24BaseService
                 }
             }
 
+            // Добавляем контакт к сделке, если указан
+            if ($contactId) {
+                $contactResponse = $this->client->post($this->webhookUrl . 'crm.deal.contact.add', [
+                    'json' => [
+                        'id' => $dealId,
+                        'fields' => [
+                            'CONTACT_ID' => 303,
+                            'IS_PRIMARY' => 'Y'
+                        ]
+                    ]
+                ]);
+
+                $contactResult = json_decode($contactResponse->getBody()->getContents(), true);
+
+                if (isset($contactResult['error'])) {
+                    Log::error('Ошибка при добавлении контакта к сделке:', [
+                        'deal_id' => $dealId,
+                        'contact_id' => $contactId,
+                        'error' => $contactResult['error_description'] ?? 'Unknown error'
+                    ]);
+                } else {
+                    Log::debug('Контакт успешно добавлен к сделке:', [
+                        'deal_id' => $dealId,
+                        'contact_id' => $contactId
+                    ]);
+                }
+            }
+
             return [
                 'status' => 'success',
                 'deal_id' => $dealId
             ];
 
         } catch (Exception $e) {
-            Log::error('Bitrix24 Deal Error: ' . $e->getMessage(), [
+            Log::error('Ошибка при создании сделки в Bitrix24: ' . $e->getMessage(), [
                 'deal_data' => $dealData,
-                'products' => $products ?? []
+                'products' => $products ?? [],
+                'contact_id' => $contactId ?? null
             ]);
             return [
                 'status' => 'error',
@@ -98,75 +113,33 @@ class DealService extends Bitrix24BaseService
     }
 
     /**
-     * Получение информации о сделке
+     * Привязывает событие обновления сделки в Битрикс24 к обработчику
      */
-    public function getDeal($dealId)
+    public function bindDealUpdateEvent()
     {
         try {
-            $response = $this->client->post($this->webhookUrl . 'crm.deal.get', [
+            $response = $this->client->post($this->webhookUrl . 'event.bind', [
                 'json' => [
-                    'id' => $dealId
+                    'event' => 'ONCRMDEALUPDATE',
+                    'handler' => route('api.bitrix24.event'),
+                    'auth_type' => 1
                 ]
             ]);
 
             $result = json_decode($response->getBody()->getContents(), true);
-
+            
             if (isset($result['error'])) {
                 throw new Exception($result['error_description'] ?? 'Unknown Bitrix24 error');
             }
 
-            return $result['result'] ?? null;
-
+            Log::info('Bitrix24 event binding result:', $result);
+            
+            return $result;
         } catch (Exception $e) {
-            Log::error('Ошибка при получении информации о сделке: ' . $e->getMessage(), [
-                'deal_id' => $dealId
+            Log::error('Error binding Bitrix24 event: ' . $e->getMessage(), [
+                'exception' => $e
             ]);
-            return null;
-        }
-    }
-
-    public function createLead(array $leadData)
-    {
-        try {
-            $response = $this->client->post($this->webhookUrl . 'crm.contact.add', [
-                'json' => [
-                    'fields' => $leadData,
-                    'params' => ['REGISTER_SONET_EVENT' => 'Y']
-                ]
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true);
-
-            return [
-                'contact_id' => $result['result'],
-                'status' => 'success'
-            ];
-        } catch (Exception $e) {
-            \Log::error('Bitrix24 Contact Creation Error: ' . $e->getMessage());
-
-            return [
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ];
-        }
-    }
-
-    public function updateLeadStatus($leadId, $status)
-    {
-        try {
-            $response = $this->client->post($this->webhookUrl . 'crm.lead.update', [
-                'json' => [
-                    'ID' => $leadId,
-                    'FIELDS' => [
-                        'STATUS_ID' => $status
-                    ]
-                ]
-            ]);
-
-            return true;
-        } catch (Exception $e) {
-            \Log::error('Bitrix24 Lead Update Error: ' . $e->getMessage());
-            return false;
+            throw $e;
         }
     }
 }
