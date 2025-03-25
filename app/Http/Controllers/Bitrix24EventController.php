@@ -30,18 +30,20 @@ class Bitrix24EventController extends Controller
             'ip' => $request->ip()
         ]);
 
-        // Проверяем токен из query параметров
-        $token = $request->query('token') ?? $request->query('auth.application_token');
+        // В Bitrix24 токен передается в параметре auth[application_token]
+        $token = $request->query('auth')['application_token'] ?? null;
 
         Log::info('Проверка токена:', [
             'received_token' => $token,
-            'expected_token' => $this->webhookToken
+            'expected_token' => $this->webhookToken,
+            'auth_params' => $request->query('auth')
         ]);
 
         if ($token !== $this->webhookToken) {
             Log::warning('Неверный токен авторизации', [
                 'ip' => $request->ip(),
-                'token' => $token
+                'received_token' => $token,
+                'auth_params' => $request->query('auth')
             ]);
             return response()->json(['error' => 'Unauthorized'], 401);
         }
