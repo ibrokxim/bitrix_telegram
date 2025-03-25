@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 class Bitrix24EventController extends Controller
 {
     protected $telegramService;
+    protected $webhookToken = 'n0or614p5p0fs5b9jd9nx57te921wnqg';
 
     public function __construct(TelegramService $telegramService)
     {
@@ -21,6 +22,16 @@ class Bitrix24EventController extends Controller
      */
     public function handleEvent(Request $request)
     {
+        // Проверяем токен
+        $token = $request->header('X-Bitrix-Webhook-Token') ?? $request->input('token');
+        if ($token !== $this->webhookToken) {
+            Log::warning('Попытка доступа с неверным токеном', [
+                'ip' => $request->ip(),
+                'token' => $token
+            ]);
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
         // Логируем входящие данные
         Log::info('Получены данные от Bitrix24 webhook:', $request->all());
 
@@ -62,12 +73,50 @@ class Bitrix24EventController extends Controller
                             $order->status = $newStatus;
                             $order->save();
 
+                            // Получаем русское название статуса для уведомления
+                            $statusNames = [
+                                'new' => 'Новый',
+                                'processed' => 'В обработке',
+                                'confirmed' => 'Подтвержден',
+                                'shipped' => 'Отправлен',
+                                'delivered' => 'Доставлен',
+                                'completed' => 'Завершен',
+                                'canceled' => 'Отменен'
+                            ];
+
+                            $statusText = $statusNames[$newStatus] ?? $newStatus;
+
+                            // Формируем сообщение для пользователя
+                            $message = "🔄 *Обновление статуса заказа #{$order->id}*\n\n";
+                            $message .= "Новый статус: *{$statusText}*\n\n";
+
+                            // Добавляем дополнительную информацию в зависимости от статуса
+                            switch ($newStatus) {
+                                case 'confirmed':
+                                    $message .= "✅ Ваш заказ подтвержден и готовится к отправке.";
+                                    break;
+                                case 'shipped':
+                                    $message .= "🚚 Ваш заказ передан в доставку.";
+                                    break;
+                                case 'delivered':
+                                    $message .= "📦 Ваш заказ доставлен. Спасибо за покупку!";
+                                    break;
+                                case 'completed':
+                                    $message .= "🎉 Заказ успешно выполнен. Спасибо за покупку!";
+                                    break;
+                                case 'canceled':
+                                    $message .= "❌ Заказ отменен. Если у вас есть вопросы, пожалуйста, свяжитесь с нами.";
+                                    break;
+                            }
+
                             // Отправляем уведомление через Telegram
-                            $this->telegramService->sendOrderStatusChangedNotification(
-                                $order,
-                                $oldStatus,
-                                $newStatus
-                            );
+                            if ($order->user && $order->user->telegram_chat_id) {
+                                $this->telegramService->sendMessage(
+                                    $order->user->telegram_chat_id,
+                                    $message,
+                                    ['parse_mode' => 'Markdown']
+                                );
+                            }
 
                             Log::info('Статус заказа успешно обновлен', [
                                 'order_id' => $order->id,

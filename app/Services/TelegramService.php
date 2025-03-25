@@ -331,4 +331,40 @@ Barcha mahsulotlarni ko'rish uchun quyidagi tugmani bosing 👇 va ro'yxatdan o'
             ]);
         }
     }
+
+    /**
+     * Отправляет сообщение через Telegram
+     * 
+     * @param string $chatId ID чата пользователя
+     * @param string $message Текст сообщения
+     * @param array $options Дополнительные параметры (parse_mode, reply_markup и т.д.)
+     * @return array|null
+     */
+    public function sendMessage($chatId, $message, $options = [])
+    {
+        try {
+            $params = array_merge([
+                'chat_id' => $chatId,
+                'text' => $message
+            ], $options);
+
+            $response = $this->bot->sendMessage($params);
+            
+            Log::info('Telegram notification sent', [
+                'chat_id' => $chatId,
+                'message' => $message,
+                'options' => $options
+            ]);
+
+            return $response;
+        } catch (\Exception $e) {
+            Log::error('Error sending Telegram message: ' . $e->getMessage(), [
+                'chat_id' => $chatId,
+                'message' => $message,
+                'options' => $options,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
 }
