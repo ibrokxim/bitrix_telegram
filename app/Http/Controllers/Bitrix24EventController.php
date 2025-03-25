@@ -70,7 +70,7 @@ class Bitrix24EventController extends Controller
                     ]);
 
                     // Находим заказ по ID сделки в Bitrix24
-                    $order = Order::where('bitrix24_deal_id', $dealId)->first();
+                    $order = Order::where('bitrix_deal_id', $dealId)->first();
 
                     Log::info('Поиск заказа:', [
                         'deal_id' => $dealId,
@@ -127,25 +127,51 @@ class Bitrix24EventController extends Controller
                             $statusText = $statusNames[$newStatus] ?? $newStatus;
 
                             // Формируем сообщение для пользователя
-                            $message = "🔄 *Обновление статуса заказа #{$order->id}*\n\n";
-                            $message .= "Новый статус: *{$statusText}*\n\n";
+                            $message = "📦 *Заказ #{$order->id}* | *Buyurtma #{$order->id}*\n\n";
 
-                            // Добавляем дополнительную информацию в зависимости от статуса
+                            // Добавляем информацию в зависимости от статуса
                             switch ($newStatus) {
+                                case 'new':
+                                    $message .= "🆕 *Статус заказа: Новый*\n";
+                                    $message .= "Ваш заказ успешно создан и принят в обработку. В ближайшее время с вами свяжется наш менеджер.\n\n";
+                                    $message .= "🆕 *Buyurtma holati: Yangi*\n";
+                                    $message .= "Buyurtmangiz muvaffaqiyatli yaratildi va qayta ishlashga qabul qilindi. Tez orada menejerimiz siz bilan bog'lanadi.";
+                                    break;
+                                case 'processed':
+                                    $message .= "⚡️ *Статус заказа: В обработке*\n";
+                                    $message .= "Мы начали обрабатывать ваш заказ. Наши специалисты проверяют наличие товаров и готовят их к отправке.\n\n";
+                                    $message .= "⚡️ *Buyurtma holati: Qayta ishlashda*\n";
+                                    $message .= "Buyurtmangizni qayta ishlashni boshladik. Mutaxassislarimiz tovarlar mavjudligini tekshirib, jo'natishga tayyorlamoqdalar.";
+                                    break;
                                 case 'confirmed':
-                                    $message .= "✅ Ваш заказ подтвержден и готовится к отправке.";
+                                    $message .= "✅ *Статус заказа: Подтвержден*\n";
+                                    $message .= "Ваш заказ подтвержден! Мы подготовили все товары и готовим их к отправке. Ожидайте информацию о доставке.\n\n";
+                                    $message .= "✅ *Buyurtma holati: Tasdiqlandi*\n";
+                                    $message .= "Buyurtmangiz tasdiqlandi! Barcha tovarlarni tayyorladik va jo'natishga tayyorlamoqdamiz. Yetkazib berish haqida ma'lumot kuting.";
                                     break;
                                 case 'shipped':
-                                    $message .= "🚚 Ваш заказ передан в доставку.";
+                                    $message .= "🚚 *Статус заказа: Отправлен*\n";
+                                    $message .= "Отличные новости! Ваш заказ уже в пути. Курьер доставит его по указанному адресу в ближайшее время.\n\n";
+                                    $message .= "🚚 *Buyurtma holati: Jo'natildi*\n";
+                                    $message .= "Ajoyib yangilik! Buyurtmangiz yo'lda. Kuryer uni ko'rsatilgan manzilga yaqin vaqt ichida yetkazib beradi.";
                                     break;
                                 case 'delivered':
-                                    $message .= "📦 Ваш заказ доставлен. Спасибо за покупку!";
+                                    $message .= "📬 *Статус заказа: Доставлен*\n";
+                                    $message .= "Ваш заказ успешно доставлен! Спасибо за покупку. Надеемся, вам понравятся приобретенные товары.\n\n";
+                                    $message .= "📬 *Buyurtma holati: Yetkazildi*\n";
+                                    $message .= "Buyurtmangiz muvaffaqiyatli yetkazib berildi! Xarid uchun rahmat. Sotib olingan tovarlar sizga yoqadi degan umiddamiz.";
                                     break;
                                 case 'completed':
-                                    $message .= "🎉 Заказ успешно выполнен. Спасибо за покупку!";
+                                    $message .= "🎉 *Статус заказа: Завершен*\n";
+                                    $message .= "Заказ успешно завершен! Благодарим вас за выбор нашего магазина. Будем рады видеть вас снова!\n\n";
+                                    $message .= "🎉 *Buyurtma holati: Yakunlandi*\n";
+                                    $message .= "Buyurtma muvaffaqiyatli yakunlandi! Do'konimizni tanlaganingiz uchun tashakkur. Sizni yana ko'rishdan xursand bo'lamiz!";
                                     break;
                                 case 'canceled':
-                                    $message .= "❌ Заказ отменен. Если у вас есть вопросы, пожалуйста, свяжитесь с нами.";
+                                    $message .= "❌ *Статус заказа: Отменен*\n";
+                                    $message .= "К сожалению, ваш заказ был отменен. Если у вас возникли вопросы, пожалуйста, свяжитесь с нашей службой поддержки.\n\n";
+                                    $message .= "❌ *Buyurtma holati: Bekor qilindi*\n";
+                                    $message .= "Afsuski, buyurtmangiz bekor qilindi. Savollaringiz bo'lsa, iltimos, bizning qo'llab-quvvatlash xizmatimiz bilan bog'laning.";
                                     break;
                             }
 
