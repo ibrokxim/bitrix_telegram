@@ -22,24 +22,42 @@ class Bitrix24EventController extends Controller
      */
     public function handleEvent(Request $request)
     {
-        // Проверяем токен
-        $token = $request->header('X-Bitrix-Webhook-Token') ?? $request->input('token');
+        // Подробное логирование всех входящих данных
+        Log::info('Входящий GET-запрос от Bitrix24:', [
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'query_params' => $request->query(),
+            'ip' => $request->ip()
+        ]);
+
+        // Проверяем токен из query параметров
+        $token = $request->query('token') ?? $request->query('auth.application_token');
+
+        Log::info('Проверка токена:', [
+            'received_token' => $token,
+            'expected_token' => $this->webhookToken
+        ]);
+
         if ($token !== $this->webhookToken) {
-            Log::warning('Попытка доступа с неверным токеном', [
+            Log::warning('Неверный токен авторизации', [
                 'ip' => $request->ip(),
                 'token' => $token
             ]);
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        // Логируем входящие данные
-        Log::info('Получены данные от Bitrix24 webhook:', $request->all());
-
         try {
             // Проверяем, что это событие обновления сделки
-            if ($request->input('event') === 'ONCRMDEALUPDATE') {
-                $fields = $request->input('data.FIELDS', []);
+            if ($request->query('event') === 'ONCRMDEALUPDATE') {
+                // Получаем данные из query параметров
+                $fields = $request->query('data.FIELDS', []);
                 
+                Log::info('Получены данные о сделке:', [
+                    'event' => $request->query('event'),
+                    'fields' => $fields,
+                    'all_params' => $request->query()
+                ]);
+
                 // Проверяем изменение статуса сделки
                 if (isset($fields['STAGE_ID'])) {
                     $dealId = $fields['ID'] ?? null;
@@ -51,7 +69,17 @@ class Bitrix24EventController extends Controller
                     ]);
 
                     // Находим заказ по ID сделки в Bitrix24
-                    $order = Order::where('bitrix24_deal_id', $dealId)->first();
+                    $order = Order::where('bitrix_deal_id', $dealId)->first();
+
+                    Log::info('Поиск заказа:', [
+                        'deal_id' => $dealId,
+                        'order_found' => !is_null($order),
+                        'order_details' => $order ? [
+                            'id' => $order->id,
+                            'current_status' => $order->status,
+                            'user_id' => $order->user_id
+                        ] : null
+                    ]);
 
                     if ($order) {
                         // Маппинг статусов из Bitrix24 в статусы вашей системы
@@ -65,6 +93,11 @@ class Bitrix24EventController extends Controller
                             'C1:LOSE' => 'canceled'               // Сделка отменена
                         ];
 
+                        Log::info('Маппинг статуса:', [
+                            'bitrix_status' => $newStageId,
+                            'mapped_status' => $statusMapping[$newStageId] ?? 'unknown'
+                        ]);
+
                         $newStatus = $statusMapping[$newStageId] ?? 'unknown';
                         $oldStatus = $order->status;
 
@@ -72,6 +105,12 @@ class Bitrix24EventController extends Controller
                             // Обновляем статус заказа
                             $order->status = $newStatus;
                             $order->save();
+
+                            Log::info('Статус заказа обновлен:', [
+                                'order_id' => $order->id,
+                                'old_status' => $oldStatus,
+                                'new_status' => $newStatus
+                            ]);
 
                             // Получаем русское название статуса для уведомления
                             $statusNames = [
@@ -111,26 +150,40 @@ class Bitrix24EventController extends Controller
 
                             // Отправляем уведомление через Telegram
                             if ($order->user && $order->user->telegram_chat_id) {
+                                Log::info('Отправка уведомления в Telegram:', [
+                                    'chat_id' => $order->user->telegram_chat_id,
+                                    'message' => $message
+                                ]);
+
                                 $this->telegramService->sendMessage(
                                     $order->user->telegram_chat_id,
                                     $message,
                                     ['parse_mode' => 'Markdown']
                                 );
+                            } else {
+                                Log::warning('Не удалось отправить уведомление: отсутствует telegram_chat_id', [
+                                    'order_id' => $order->id,
+                                    'user_id' => $order->user_id ?? null
+                                ]);
                             }
-
-                            Log::info('Статус заказа успешно обновлен', [
+                        } else {
+                            Log::info('Статус не изменился:', [
                                 'order_id' => $order->id,
-                                'old_status' => $oldStatus,
-                                'new_status' => $newStatus,
-                                'bitrix24_deal_id' => $dealId
+                                'status' => $oldStatus
                             ]);
                         }
                     } else {
                         Log::warning('Заказ не найден для сделки Bitrix24', [
-                            'bitrix24_deal_id' => $dealId
+                            'deal_id' => $dealId
                         ]);
                     }
+                } else {
+                    Log::info('Событие не содержит изменения статуса');
                 }
+            } else {
+                Log::info('Получено неподдерживаемое событие:', [
+                    'event' => $request->query('event')
+                ]);
             }
 
             return response()->json([
@@ -150,4 +203,4 @@ class Bitrix24EventController extends Controller
             ], 500);
         }
     }
-} 
+}

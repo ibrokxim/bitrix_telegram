@@ -24,4 +24,13 @@ Route::post('/webhook/telegram', [TelegramController::class, 'handleWebhook']);
 Route::post('/webhook/bitrix/deal', [BitrixWebhookController::class, 'handleDealUpdate']);
 Route::post('/verify-phone', [RegistrationController::class, 'verifyExistingUser']);
 Route::get('/users/list', [RegistrationController::class, 'listUsers']);
-Route::post('/bitrix24/event', [Bitrix24EventController::class, 'handleEvent'])->name('api.bitrix24.event');
+Route::get('/bitrix24/event', [Bitrix24EventController::class, 'handleEvent']);
+
+// Тестовый маршрут для проверки доступности
+Route::get('/bitrix24/test', function() {
+    return response()->json([
+        'status' => 'success',
+        'message' => 'API endpoint is accessible',
+        'timestamp' => now()->toIso8601String()
+    ]);
+});
