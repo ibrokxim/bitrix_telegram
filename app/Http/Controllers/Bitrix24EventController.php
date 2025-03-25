@@ -23,15 +23,18 @@ class Bitrix24EventController extends Controller
     public function handleEvent(Request $request)
     {
         // Подробное логирование всех входящих данных
-        Log::info('Входящий GET-запрос от Bitrix24:', [
+        Log::info('Входящий запрос от Bitrix24:', [
             'method' => $request->method(),
             'url' => $request->fullUrl(),
-            'query_params' => $request->query(),
+            'headers' => $request->headers->all(),
+            'body' => $request->all(),
             'ip' => $request->ip()
         ]);
 
-        // Проверяем токен из query параметров
-        $token = $request->query('token') ?? $request->query('auth.application_token');
+        // Проверяем токен из разных источников
+        $token = $request->header('X-Bitrix-Webhook-Token')
+            ?? $request->input('token')
+            ?? $request->input('auth.application_token');
 
         Log::info('Проверка токена:', [
             'received_token' => $token,
@@ -48,14 +51,12 @@ class Bitrix24EventController extends Controller
 
         try {
             // Проверяем, что это событие обновления сделки
-            if ($request->query('event') === 'ONCRMDEALUPDATE') {
-                // Получаем данные из query параметров
-                $fields = $request->query('data.FIELDS', []);
+            if ($request->input('event') === 'ONCRMDEALUPDATE') {
+                $fields = $request->input('data.FIELDS', []);
 
                 Log::info('Получены данные о сделке:', [
-                    'event' => $request->query('event'),
-                    'fields' => $fields,
-                    'all_params' => $request->query()
+                    'event' => $request->input('event'),
+                    'fields' => $fields
                 ]);
 
                 // Проверяем изменение статуса сделки
@@ -69,7 +70,7 @@ class Bitrix24EventController extends Controller
                     ]);
 
                     // Находим заказ по ID сделки в Bitrix24
-                    $order = Order::where('bitrix_deal_id', $dealId)->first();
+                    $order = Order::where('bitrix24_deal_id', $dealId)->first();
 
                     Log::info('Поиск заказа:', [
                         'deal_id' => $dealId,
@@ -182,7 +183,7 @@ class Bitrix24EventController extends Controller
                 }
             } else {
                 Log::info('Получено неподдерживаемое событие:', [
-                    'event' => $request->query('event')
+                    'event' => $request->input('event')
                 ]);
             }
 
