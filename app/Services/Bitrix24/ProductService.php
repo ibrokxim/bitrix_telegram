@@ -4,17 +4,14 @@ namespace App\Services\Bitrix24;
 use Exception;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
+use GuzzleHttp\Client;
 
 class ProductService extends Bitrix24BaseService
 {
-    protected $webhookUrl;
-    protected $token;
-
     public function __construct()
     {
         $this->webhookUrl = config('services.bitrix24.webhook_url');
-        $this->token = config('services.bitrix24.webhook_token');
+        $this->client = new Client();
     }
 
     public function getProducts($sectionId)
@@ -69,24 +66,15 @@ class ProductService extends Bitrix24BaseService
         });
     }
 
-    /**
-     * Получает информацию о продукте по его ID
-     *
-     * @param int $id ID продукта
-     * @return array|null
-     */
     public function getProductById($id)
     {
         $cacheKey = "product_{$id}";
 
         return Cache::remember($cacheKey, $this->cacheTimeout, function () use ($id) {
             try {
-                $response = $this->client->post('', [
+                $response = $this->client->post($this->webhookUrl . 'crm.product.get', [
                     'json' => [
-                        'method' => 'crm.product.get',
-                        'params' => [
-                            'id' => $id
-                        ]
+                        'id' => $id,
                     ]
                 ]);
 
@@ -96,29 +84,22 @@ class ProductService extends Bitrix24BaseService
                     $product = $result['result'];
                     $priceData = $this->getProductPrice($product['ID']);
 
-                    if ($priceData) {
-                        $product['PRICE'] = $priceData['PRICE'];
-                        $product['CURRENCY_ID'] = $priceData['CURRENCY_ID'];
-                    }
-
-                    Log::info('Продукт успешно получен из Битрикс24', [
-                        'product_id' => $id,
-                        'product' => $product
-                    ]);
-
-                    return $product;
+                    return [
+                        'id' => $product['ID'],
+                        'name' => $product['NAME'],
+                        'price' => $priceData ? $priceData['price'] : $product['PRICE'],
+                        'currency' => $product['CURRENCY_ID'],
+                        'description' => $product['DESCRIPTION'],
+                        'description_uz' => $product['PROPERTY_117'],
+                        'measure' => 'ml',
+                        'catalog_id' => $product['CATALOG_ID'],
+                        'images' => $this->getProductImages($product['ID']),
+                        'variations' => $this->getProductVariations($id)
+                    ];
                 }
-
-                Log::warning('Продукт не найден в Битрикс24', [
-                    'product_id' => $id
-                ]);
                 return null;
-
-            } catch (\Exception $e) {
-                Log::error('Ошибка при получении продукта из Битрикс24:', [
-                    'product_id' => $id,
-                    'error' => $e->getMessage()
-                ]);
+            } catch (Exception $e) {
+                \Log::error('Error getting product: ' . $e->getMessage());
                 return null;
             }
         });
@@ -347,16 +328,18 @@ class ProductService extends Bitrix24BaseService
             }, $products);
 
             // Отправляем запрос к Битрикс24
-            $response = Http::post($this->webhookUrl, [
-                'method' => 'crm.deal.productrows.set',
-                'params' => [
-                    'id' => $dealId,
-                    'rows' => $productRows
+            $response = $this->client->post($this->webhookUrl, [
+                'json' => [
+                    'method' => 'crm.deal.productrows.set',
+                    'params' => [
+                        'id' => $dealId,
+                        'rows' => $productRows
+                    ]
                 ]
             ]);
 
-            if ($response->successful()) {
-                $result = $response->json();
+            if ($response->getStatusCode() === 200) {
+                $result = json_decode($response->getBody()->getContents(), true);
                 Log::info('Товары успешно добавлены к сделке в Битрикс24', [
                     'deal_id' => $dealId,
                     'products' => $products,
@@ -368,7 +351,7 @@ class ProductService extends Bitrix24BaseService
             Log::error('Ошибка при добавлении товаров к сделке в Битрикс24', [
                 'deal_id' => $dealId,
                 'products' => $products,
-                'response' => $response->json()
+                'response' => $response->getBody()->getContents()
             ]);
             return false;
 
@@ -391,15 +374,15 @@ class ProductService extends Bitrix24BaseService
     public function getDealProducts(int $dealId): ?array
     {
         try {
-            $response = Http::post($this->webhookUrl, [
+            $response = $this->client->post($this->webhookUrl, [
                 'method' => 'crm.deal.productrows.get',
                 'params' => [
                     'id' => $dealId
                 ]
             ]);
 
-            if ($response->successful()) {
-                $result = $response->json();
+            if ($response->getStatusCode() === 200) {
+                $result = json_decode($response->getBody()->getContents(), true);
                 Log::info('Товары сделки успешно получены из Битрикс24', [
                     'deal_id' => $dealId,
                     'result' => $result
@@ -409,7 +392,7 @@ class ProductService extends Bitrix24BaseService
 
             Log::error('Ошибка при получении товаров сделки из Битрикс24', [
                 'deal_id' => $dealId,
-                'response' => $response->json()
+                'response' => $response->getBody()->getContents()
             ]);
             return null;
 

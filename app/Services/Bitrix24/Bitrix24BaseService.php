@@ -14,17 +14,8 @@ abstract class Bitrix24BaseService
 
     public function __construct()
     {
+        $this->client = new Client();
         $this->webhookUrl = config('services.bitrix24.webhook_url');
-        
-        // Инициализируем Guzzle клиент
-        $this->client = new Client([
-            'base_uri' => $this->webhookUrl,
-            'timeout'  => 30,
-            'headers' => [
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-            ]
-        ]);
     }
 
     protected function logError($message, $context = [])
@@ -54,17 +45,16 @@ abstract class Bitrix24BaseService
 
             if (isset($result['result']) && !empty($result['result'])) {
                 return [
-                    'PRICE' => $result['result']['PRICE'] ?? 0,
-                    'CURRENCY_ID' => $result['result']['CURRENCY_ID'] ?? 'UZS'
+                    'price' => $result['result']['PRICE'] ?? 0,
+                    'currency' => $result['result']['CURRENCY_ID'] ?? 'UZS'
                 ];
             }
 
             return null;
 
         } catch (\Exception $e) {
-            Log::error('Ошибка при получении цены продукта:', [
-                'product_id' => $productId,
-                'error' => $e->getMessage()
+            Log::error('Error getting product price: ' . $e->getMessage(), [
+                'product_id' => $productId
             ]);
             return null;
         }
