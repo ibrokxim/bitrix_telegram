@@ -210,4 +210,126 @@ class DealService extends Bitrix24BaseService
             ];
         }
     }
+
+    /**
+     * Получает список товаров с ценой больше нуля
+     */
+    public function getAvailableProducts()
+    {
+        try {
+            $response = $this->client->post($this->webhookUrl . 'crm.product.list', [
+                'json' => [
+                    'filter' => [
+                        '>PRICE' => 0
+                    ],
+                    'select' => ['ID', 'NAME', 'PRICE', 'CURRENCY_ID']
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (!isset($result['result'])) {
+                throw new Exception('Не удалось получить список товаров');
+            }
+
+            return [
+                'status' => 'success',
+                'products' => $result['result']
+            ];
+
+        } catch (Exception $e) {
+            Log::error('Ошибка при получении списка товаров: ' . $e->getMessage());
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Создает сделку с товарами
+     */
+    public function createDealWithProducts(array $dealData, array $products)
+    {
+        try {
+            // Создаем сделку
+            $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
+                'json' => [
+                    'fields' => $dealData
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (!isset($result['result'])) {
+                throw new Exception('Не удалось создать сделку');
+            }
+
+            $dealId = $result['result'];
+
+            // Добавляем товары к сделке
+            $response = $this->client->post($this->webhookUrl . 'crm.deal.productrows.set', [
+                'json' => [
+                    'id' => $dealId,
+                    'rows' => $products
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (!isset($result['result'])) {
+                throw new Exception('Не удалось добавить товары к сделке');
+            }
+
+            return [
+                'status' => 'success',
+                'deal_id' => $dealId
+            ];
+
+        } catch (Exception $e) {
+            Log::error('Ошибка при создании сделки с товарами: ' . $e->getMessage(), [
+                'deal_data' => $dealData,
+                'products' => $products
+            ]);
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Форматирует товар для добавления к сделке
+     */
+    public function formatProductRow(array $product, array $options = [])
+    {
+        $row = [
+            'PRODUCT_ID' => $product['ID'],
+            'QUANTITY' => $options['quantity'] ?? 1
+        ];
+
+        // Базовая цена
+        if (isset($options['price_exclusive'])) {
+            $row['PRICE_EXCLUSIVE'] = $options['price_exclusive'];
+        } else {
+            $row['PRICE'] = $options['price'] ?? $product['PRICE'];
+        }
+
+        // Налог
+        if (isset($options['tax_rate'])) {
+            $row['TAX_RATE'] = $options['tax_rate'];
+            $row['TAX_INCLUDED'] = $options['tax_included'] ?? 'N';
+        }
+
+        // Скидка
+        if (isset($options['discount_sum'])) {
+            $row['DISCOUNT_SUM'] = $options['discount_sum'];
+            $row['DISCOUNT_TYPE_ID'] = 1; // фиксированная сумма
+        } elseif (isset($options['discount_rate'])) {
+            $row['DISCOUNT_RATE'] = $options['discount_rate'];
+            $row['DISCOUNT_TYPE_ID'] = 2; // процент
+        }
+
+        return $row;
+    }
 }

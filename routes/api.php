@@ -10,6 +10,7 @@ use App\Http\Controllers\Bitrix24EventController;
 use App\Services\Bitrix24\ProductService;
 use App\Services\Bitrix24\DealService;
 use Illuminate\Http\Request;
+use App\Http\Controllers\DealController;
 
 Route::get('/catalogs', [ProductController::class, 'getCatalogs']);
 Route::get('/product/{id}', [ProductController::class, 'getProductById']);
@@ -86,3 +87,7 @@ Route::post('/bitrix24/test-deal', function (Request $request) {
         'stage' => $dealService->determineInitialStage($userId)
     ]);
 });
+
+// Маршруты для работы со сделками
+Route::get('/deals/available-products', [DealController::class, 'getAvailableProducts']);
+Route::post('/deals', [DealController::class, 'createDeal']);
