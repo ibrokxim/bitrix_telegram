@@ -76,14 +76,19 @@ class TelegramController extends Controller
         try {
             $targetUserId = (int) str_replace('approve_user_', '', $data);
 
-            // Удаляем кнопки
-            $this->telegramService->editMessageReplyMarkup($chatId, $messageId);
-
             // Получаем пользователя
             $user = User::findOrFail($targetUserId);
 
+            // Удаляем кнопки
+            $this->telegramService->editMessageReplyMarkup($chatId, $messageId);
+
             // Обновляем статус пользователя
             $user->update(['status' => 'approved']);
+
+            Log::info('Обработка одобрения пользователя', [
+                'user_id' => $user->id,
+                'admin_chat_id' => $chatId
+            ]);
 
             // Подготавливаем данные для создания контакта в Битрикс24
             $contactData = [
@@ -113,16 +118,31 @@ class TelegramController extends Controller
 
             Log::info('Отправка данных в Битрикс24:', ['contactData' => $contactData]);
 
-            $leadResponse = $this->bitrix24Service->createLead($contactData);
+            // Создаем контакт в Битрикс24
+            $contactResponse = $this->bitrix24Service->createContact($contactData);
 
-            Log::info('Ответ от Битрикс24:', ['response' => $leadResponse]);
+            Log::info('Ответ от Битрикс24:', ['response' => $contactResponse]);
 
-            if ($leadResponse['status'] === 'error') {
-                Log::error("Ошибка при создании лида в Битрикс24: " . $leadResponse['message']);
+            if ($contactResponse['status'] === 'error') {
+                throw new \Exception("Ошибка при создании контакта в Битрикс24: " . $contactResponse['message']);
             }
 
+            // Обновляем ID контакта в базе данных
+            $user->update([
+                'bitrix_contact_id' => $contactResponse['contact_id']
+            ]);
+
             // Отправляем уведомление пользователю
-            $this->telegramService->sendApprovalMessage($user);
+            try {
+                $this->telegramService->sendApprovalMessage($user);
+                Log::info('Уведомление об одобрении отправлено', ['user_id' => $user->id]);
+            } catch (\Exception $e) {
+                Log::error('Ошибка при отправке уведомления об одобрении: ' . $e->getMessage(), [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
+                throw $e;
+            }
 
             // Ответ на callback
             $this->telegramService->answerCallbackQuery(
@@ -133,14 +153,17 @@ class TelegramController extends Controller
         } catch (\Exception $e) {
             Log::error('Ошибка при обработке одобрения:', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $targetUserId ?? null
             ]);
 
             // Отправляем уведомление об ошибке
             $this->telegramService->answerCallbackQuery(
                 $callbackQueryId,
-                '❌ Произошла ошибка при обработке запроса'
+                '❌ Произошла ошибка: ' . $e->getMessage()
             );
+
+            throw $e;
         }
     }
 
@@ -149,20 +172,31 @@ class TelegramController extends Controller
         try {
             $targetUserId = (int) str_replace('reject_user_', '', $data);
 
+            // Получаем пользователя
+            $user = User::findOrFail($targetUserId);
+
             // Удаляем кнопки
             $this->telegramService->editMessageReplyMarkup($chatId, $messageId);
 
+            Log::info('Обработка отклонения пользователя', [
+                'user_id' => $user->id,
+                'admin_chat_id' => $chatId
+            ]);
+
             // Обновляем статус пользователя
-            $user = User::findOrFail($targetUserId);
             $user->update(['status' => 'rejected']);
 
-            // Можно добавить запись в Битрикс24 об отклонённой заявке, если нужно
-            if ($user->bitrix24_contact_id) {
-                $this->bitrix24Service->updateLeadStatus($user->bitrix24_contact_id, 'REJECTED');
-            }
-
             // Отправляем уведомление пользователю
-            $this->telegramService->sendRejectionMessage($user);
+            try {
+                $this->telegramService->sendRejectionMessage($user);
+                Log::info('Уведомление об отклонении отправлено', ['user_id' => $user->id]);
+            } catch (\Exception $e) {
+                Log::error('Ошибка при отправке уведомления об отклонении: ' . $e->getMessage(), [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
+                throw $e;
+            }
 
             // Ответ на callback
             $this->telegramService->answerCallbackQuery(
@@ -173,13 +207,17 @@ class TelegramController extends Controller
         } catch (\Exception $e) {
             Log::error('Ошибка при обработке отклонения:', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $targetUserId ?? null
             ]);
 
+            // Отправляем уведомление об ошибке
             $this->telegramService->answerCallbackQuery(
                 $callbackQueryId,
-                '❌ Произошла ошибка при обработке запроса'
+                '❌ Произошла ошибка: ' . $e->getMessage()
             );
+
+            throw $e;
         }
     }
 

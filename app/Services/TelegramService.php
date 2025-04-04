@@ -19,55 +19,117 @@ class TelegramService
         $this->adminChatId = env('TELEGRAM_ADMIN_GROUP_ID');
     }
 
-    public function sendMessageToAdminGroup($message, $keyboard)
+    public function sendMessageToAdminGroup($message, $keyboard = null, $parseMode = false)
     {
-        $this->bot->sendMessage([
-            'chat_id' => $this->adminChatId,
-            'text' => $message,
-            'reply_markup' => json_encode($keyboard)
-        ]);
+        try {
+            $params = [
+                'chat_id' => $this->adminChatId,
+                'text' => $message
+            ];
+
+            if ($keyboard !== null) {
+                $params['reply_markup'] = json_encode($keyboard);
+            }
+
+            if ($parseMode) {
+                $params['parse_mode'] = 'Markdown';
+            }
+
+            $result = $this->bot->sendMessage($params);
+            
+            Log::info('Message sent to admin group', [
+                'chat_id' => $this->adminChatId,
+                'message' => $message
+            ]);
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('Error sending message to admin group: ' . $e->getMessage(), [
+                'chat_id' => $this->adminChatId,
+                'message' => $message,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
     }
 
     public function sendApprovalMessage(User $user)
     {
-        if (!$user->telegram_chat_id) {
-            \Log::warning("No Telegram chat ID for user {$user->id}");
-            return;
-        }
-        $message = "🇷🇺 Ваш запрос одобрен! ✅
+        try {
+            if (!$user->telegram_chat_id) {
+                Log::warning("No Telegram chat ID for user {$user->id}");
+                return;
+            }
+            
+            $message = "🇷🇺 Ваш запрос одобрен! ✅
 Нажмите на кнопку ниже, чтобы перейти в маркетплейс 👇\n🇺🇿 So'rovingiz qabul qilindi! ✅
 Marketplace'ga o'tish uchun quyidagi tugmani bosing 👇";
 
-        $keyboard = [
-            'inline_keyboard' => [
-                [
+            $keyboard = [
+                'inline_keyboard' => [
                     [
+                        [
                             'text' => 'Открыть/Ochish',
                             'url' => "https://t.me/kadyrov_urologbot/market"
                         ]
                     ]
                 ]
+            ];
 
-        ];
+            $result = $this->bot->sendMessage([
+                'chat_id' => $user->telegram_chat_id,
+                'text' => $message,
+                'reply_markup' => json_encode($keyboard)
+            ]);
 
-        $this->bot->sendMessage([
-            'chat_id' => $user->telegram_chat_id,
-            'text' => $message,
-            'reply_markup' => json_encode($keyboard)
-        ]);
+            Log::info('Approval message sent successfully', [
+                'user_id' => $user->id,
+                'telegram_chat_id' => $user->telegram_chat_id
+            ]);
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('Error sending approval message: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+                'telegram_chat_id' => $user->telegram_chat_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
     }
 
     public function sendRejectionMessage(User $user)
     {
-        $chatId = $user->telegram_chat_id;
+        try {
+            if (!$user->telegram_chat_id) {
+                Log::warning("No Telegram chat ID for user {$user->id}");
+                return;
+            }
 
-        $message = "🇷🇺 ❌ К сожалению, ваш запрос был отклонен.\n\nСвяжитесь с администратором для получения дополнительной информации.
+            $message = "🇷🇺 ❌ К сожалению, ваш запрос был отклонен.\n\nСвяжитесь с администратором для получения дополнительной информации.
             🇺🇿❌ Afsuski, so'rovingiz rad etildi.\n\nQo'shimcha ma'lumot uchun administrator bilan bog'laning.";
 
-        $this->bot->sendMessage([
-            'chat_id' => $chatId,
-            'text' => $message
-        ]);
+            $result = $this->bot->sendMessage([
+                'chat_id' => $user->telegram_chat_id,
+                'text' => $message
+            ]);
+
+            Log::info('Rejection message sent successfully', [
+                'user_id' => $user->id,
+                'telegram_chat_id' => $user->telegram_chat_id
+            ]);
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('Error sending rejection message: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+                'telegram_chat_id' => $user->telegram_chat_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
     }
 
 

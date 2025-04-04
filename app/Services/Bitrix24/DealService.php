@@ -15,6 +15,92 @@ class DealService extends Bitrix24BaseService
     }
 
     /**
+     * Создает новый лид в Битрикс24
+     *
+     * @param array $leadData Данные лида
+     * @return array Результат создания лида
+     */
+    public function createLead(array $leadData)
+    {
+        try {
+            $response = $this->client->post($this->webhookUrl . 'crm.lead.add', [
+                'json' => [
+                    'fields' => $leadData,
+                    'params' => ['REGISTER_SONET_EVENT' => 'Y']
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($result['result'])) {
+                return [
+                    'status' => 'success',
+                    'lead_id' => $result['result']
+                ];
+            }
+
+            return [
+                'status' => 'error',
+                'message' => 'Failed to create lead in Bitrix24'
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Ошибка при создании лида в Bitrix24: ' . $e->getMessage(), [
+                'lead_data' => $leadData
+            ]);
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Обновляет статус лида в Битрикс24
+     *
+     * @param int $leadId ID лида
+     * @param string $status Новый статус
+     * @return array Результат обновления статуса
+     */
+    public function updateLeadStatus($leadId, $status)
+    {
+        try {
+            $response = $this->client->post($this->webhookUrl . 'crm.lead.update', [
+                'json' => [
+                    'id' => $leadId,
+                    'fields' => [
+                        'STATUS_ID' => $status
+                    ]
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($result['result']) && $result['result']) {
+                return [
+                    'status' => 'success',
+                    'lead_id' => $leadId
+                ];
+            }
+
+            return [
+                'status' => 'error',
+                'message' => 'Failed to update lead status in Bitrix24'
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Ошибка при обновлении статуса лида в Bitrix24: ' . $e->getMessage(), [
+                'lead_id' => $leadId,
+                'status' => $status
+            ]);
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
      * Создает новую сделку в Битрикс24
      *
      * @param array $dealData Данные сделки

@@ -21,7 +21,7 @@ class Bitrix24EventController extends Controller
         ProductService $productService,
         TelegramService $telegramService
     ) {
-        $this->webhookToken = config('services.bitrix24.webhook_token');
+        $this->webhookToken = "a2m41hryq1h0h4239z8j2m6qbetoz62a";
         $this->dealService = $dealService;
         $this->productService = $productService;
         $this->telegramService = $telegramService;
