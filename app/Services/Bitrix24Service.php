@@ -246,10 +246,25 @@ class Bitrix24Service
     public function createDeal(array $dealData)
     {
         try {
-            // Извлекаем товары и контакт из данных сделки
+            // Извлекаем товары и телефон из данных сделки
             $products = $dealData['PRODUCT_ROWS'] ?? [];
-            $contactId = $dealData['CONTACT_ID'] ?? null;
-            unset($dealData['PRODUCT_ROWS'], $dealData['CONTACT_ID']);
+            $phone = $dealData['PHONE'] ?? null;
+            unset($dealData['PRODUCT_ROWS'], $dealData['PHONE']);
+
+            // Если есть телефон, ищем контакт
+            $contactId = null;
+            if ($phone) {
+                $contactInfo = $this->checkContactExists($phone);
+                if ($contactInfo['exists']) {
+                    $contactId = $contactInfo['contact_id'];
+                    Log::info('Найден существующий контакт', [
+                        'phone' => $phone,
+                        'contact_id' => $contactId
+                    ]);
+                } else {
+                    Log::warning('Контакт не найден для телефона: ' . $phone);
+                }
+            }
 
             // Создаем сделку
             $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
@@ -266,7 +281,7 @@ class Bitrix24Service
 
             $dealId = $result['result'];
 
-            // Если есть контакт, привязываем его к сделке
+            // Если нашли контакт, привязываем его к сделке
             if ($contactId) {
                 $response = $this->client->post($this->webhookUrl . 'crm.deal.contact.add', [
                     'json' => [
@@ -319,7 +334,8 @@ class Bitrix24Service
                 'deal_id' => $dealId,
                 'fields' => $dealData,
                 'products' => $products,
-                'contact_id' => $contactId
+                'contact_id' => $contactId,
+                'phone' => $phone
             ]);
 
             return [
@@ -331,7 +347,7 @@ class Bitrix24Service
             Log::error('Ошибка при создании сделки в Bitrix24: ' . $e->getMessage(), [
                 'deal_data' => $dealData,
                 'products' => $products ?? [],
-                'contact_id' => $contactId ?? null
+                'phone' => $phone ?? null
             ]);
             return [
                 'status' => 'error',
