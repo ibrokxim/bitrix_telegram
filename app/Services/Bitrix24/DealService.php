@@ -109,88 +109,49 @@ class DealService extends Bitrix24BaseService
     public function createDeal(array $dealData)
     {
         try {
-            // Извлекаем товары и контакт из данных сделки
-            $products = $dealData['PRODUCTS'] ?? [];
-            $contactId = $dealData['CONTACT_ID'] ?? null;
-            unset($dealData['PRODUCTS'], $dealData['CONTACT_ID']);
+            // Извлекаем товары из данных сделки
+            $products = $dealData['PRODUCT_ROWS'] ?? [];
+            unset($dealData['PRODUCT_ROWS']);
 
             // Создаем сделку
             $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
                 'json' => [
-                    'fields' => $dealData,
-                    'params' => ['REGISTER_SONET_EVENT' => 'Y']
+                    'fields' => $dealData
                 ]
             ]);
 
-            if (!$response->getStatusCode() === 200) {
-                throw new Exception('Failed to create deal: ' . $response->getBody()->getContents());
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (!isset($result['result'])) {
+                throw new Exception('Failed to create deal: ' . json_encode($result));
             }
 
-            $result = json_decode($response->getBody()->getContents(), true);
             $dealId = $result['result'];
 
-            // Добавляем товары к сделке, если они указаны
+            // Если есть товары, добавляем их к сделке
             if (!empty($products)) {
-                $formattedProducts = array_map(function ($product) {
-                    return [
-                        'PRODUCT_ID' => $product['id'],
-                        'PRODUCT_NAME' => $product['name'],
-                        'PRICE' => (float)$product['price'],
-                        'QUANTITY' => (float)$product['quantity'],
-                        'CURRENCY_ID' => 'UZS',
-                    ];
-                }, $products);
-
-                $productsResponse = $this->client->post($this->webhookUrl . 'crm.deal.productrows.set', [
+                $response = $this->client->post($this->webhookUrl . 'crm.deal.productrows.set', [
                     'json' => [
                         'id' => $dealId,
-                        'rows' => $formattedProducts
+                        'rows' => $products
                     ]
                 ]);
 
-                if (!$productsResponse->getStatusCode() === 200) {
+                $result = json_decode($response->getBody()->getContents(), true);
+
+                if (!isset($result['result'])) {
                     Log::error('Ошибка при добавлении товаров к сделке:', [
                         'deal_id' => $dealId,
-                        'error' => $productsResponse->getBody()->getContents(),
-                        'products' => $formattedProducts
-                    ]);
-                } else {
-                    Log::info('Товары успешно добавлены к сделке:', [
-                        'deal_id' => $dealId,
-                        'products_count' => count($formattedProducts)
-                    ]);
-                }
-            }
-
-            // Добавляем контакт к сделке, если указан
-            if ($contactId) {
-                $contactResponse = $this->client->post($this->webhookUrl . 'crm.deal.contact.add', [
-                    'json' => [
-                        'id' => $dealId,
-                        'fields' => [
-                            'CONTACT_ID' => $contactId,
-                            'IS_PRIMARY' => 'Y'
-                        ]
-                    ]
-                ]);
-
-                if (!$contactResponse->getStatusCode() === 200) {
-                    Log::error('Ошибка при добавлении контакта к сделке:', [
-                        'deal_id' => $dealId,
-                        'contact_id' => $contactId,
-                        'error' => $contactResponse->getBody()->getContents()
-                    ]);
-                } else {
-                    Log::info('Контакт успешно добавлен к сделке:', [
-                        'deal_id' => $dealId,
-                        'contact_id' => $contactId
+                        'products' => $products,
+                        'response' => $result
                     ]);
                 }
             }
 
             Log::info('Сделка успешно создана в Битрикс24', [
                 'deal_id' => $dealId,
-                'fields' => $dealData
+                'fields' => $dealData,
+                'products' => $products
             ]);
 
             return [
@@ -201,8 +162,7 @@ class DealService extends Bitrix24BaseService
         } catch (Exception $e) {
             Log::error('Ошибка при создании сделки в Bitrix24: ' . $e->getMessage(), [
                 'deal_data' => $dealData,
-                'products' => $products ?? [],
-                'contact_id' => $contactId ?? null
+                'products' => $products ?? []
             ]);
             return [
                 'status' => 'error',
