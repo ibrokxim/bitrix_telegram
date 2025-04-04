@@ -4,9 +4,94 @@ namespace App\Services\Bitrix24;
 
 use Exception;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class DealService extends Bitrix24BaseService
 {
+    protected $stageMap = [
+        'new' => 'C1:NEW',
+        'processed' => 'C1:PREPARATION',
+        'confirmed' => 'C1:PREPAYMENT_INVOICE',
+        'shipped' => 'C1:EXECUTING',
+        'delivered' => 'C1:FINAL_INVOICE',
+        'completed' => 'C1:WON',
+        'canceled' => 'C1:LOSE'
+    ];
+
+    /**
+     * Определяет начальную стадию сделки на основе истории заказов пользователя
+     *
+     * @param int $userId ID пользователя
+     * @return string ID стадии в Битрикс24
+     */
+    public function determineInitialStage(int $userId): string
+    {
+        // Получаем количество заказов пользователя
+        $orderCount = \App\Models\Order::where('user_id', $userId)
+            ->where('status', '!=', 'canceled')
+            ->count();
+
+        Log::info('Определение начальной стадии сделки', [
+            'user_id' => $userId,
+            'order_count' => $orderCount
+        ]);
+
+        // Если это первый заказ - отправляем в "Новые"
+        if ($orderCount === 0) {
+            return 'C1:NEW';
+        }
+
+        // Если уже есть заказы - отправляем в "Повторные"
+        // Замените 'C1:REPEAT' на реальный ID стадии "Повторные" из вашего Битрикс24
+        return 'C1:REPEAT';
+    }
+
+    /**
+     * Создает новую сделку в Битрикс24
+     *
+     * @param array $fields Поля сделки
+     * @return int|null ID созданной сделки или null в случае ошибки
+     */
+    public function createDeal(array $fields): ?int
+    {
+        try {
+            // Определяем начальную стадию на основе истории заказов
+            $initialStage = $this->determineInitialStage($fields['user_id'] ?? 0);
+            
+            // Добавляем стадию к полям сделки
+            $fields['STAGE_ID'] = $initialStage;
+
+            $response = Http::post($this->webhookUrl, [
+                'method' => 'crm.deal.add',
+                'params' => [
+                    'fields' => $fields
+                ]
+            ]);
+
+            if ($response->successful()) {
+                $result = $response->json();
+                Log::info('Сделка успешно создана в Битрикс24', [
+                    'fields' => $fields,
+                    'result' => $result
+                ]);
+                return $result['result'] ?? null;
+            }
+
+            Log::error('Ошибка при создании сделки в Битрикс24', [
+                'fields' => $fields,
+                'response' => $response->json()
+            ]);
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Исключение при создании сделки в Битрикс24', [
+                'fields' => $fields,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
     public function createDeal(array $dealData)
     {
         try {

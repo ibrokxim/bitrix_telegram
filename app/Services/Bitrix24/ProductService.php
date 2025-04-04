@@ -4,9 +4,19 @@ namespace App\Services\Bitrix24;
 use Exception;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class ProductService extends Bitrix24BaseService
 {
+    protected $webhookUrl;
+    protected $token;
+
+    public function __construct()
+    {
+        $this->webhookUrl = config('services.bitrix24.webhook_url');
+        $this->token = config('services.bitrix24.webhook_token');
+    }
+
     public function getProducts($sectionId)
     {
         $cacheKey = "products_section_{$sectionId}";
@@ -298,4 +308,101 @@ class ProductService extends Bitrix24BaseService
         }
     }
 
+    /**
+     * Добавляет товары к сделке в Битрикс24
+     *
+     * @param int $dealId ID сделки в Битрикс24
+     * @param array $products Массив товаров с информацией о количестве и цене
+     * @return bool
+     */
+    public function addProductsToDeal(int $dealId, array $products): bool
+    {
+        try {
+            // Формируем массив товаров для Битрикс24
+            $productRows = array_map(function ($product) {
+                return [
+                    'PRODUCT_ID' => $product['bitrix24_id'],
+                    'QUANTITY' => $product['quantity'],
+                    'PRICE' => $product['price'],
+                    'DISCOUNT_TYPE_ID' => 1, // 1 = процентная скидка
+                    'DISCOUNT_RATE' => $product['discount'] ?? 0,
+                    'DISCOUNT_SUM' => $product['discount_sum'] ?? 0
+                ];
+            }, $products);
+
+            // Отправляем запрос к Битрикс24
+            $response = Http::post($this->webhookUrl, [
+                'method' => 'crm.deal.productrows.set',
+                'params' => [
+                    'id' => $dealId,
+                    'rows' => $productRows
+                ]
+            ]);
+
+            if ($response->successful()) {
+                $result = $response->json();
+                Log::info('Товары успешно добавлены к сделке в Битрикс24', [
+                    'deal_id' => $dealId,
+                    'products' => $products,
+                    'result' => $result
+                ]);
+                return true;
+            }
+
+            Log::error('Ошибка при добавлении товаров к сделке в Битрикс24', [
+                'deal_id' => $dealId,
+                'products' => $products,
+                'response' => $response->json()
+            ]);
+            return false;
+
+        } catch (\Exception $e) {
+            Log::error('Исключение при добавлении товаров к сделке в Битрикс24', [
+                'deal_id' => $dealId,
+                'products' => $products,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Получает список товаров сделки из Битрикс24
+     *
+     * @param int $dealId ID сделки в Битрикс24
+     * @return array|null
+     */
+    public function getDealProducts(int $dealId): ?array
+    {
+        try {
+            $response = Http::post($this->webhookUrl, [
+                'method' => 'crm.deal.productrows.get',
+                'params' => [
+                    'id' => $dealId
+                ]
+            ]);
+
+            if ($response->successful()) {
+                $result = $response->json();
+                Log::info('Товары сделки успешно получены из Битрикс24', [
+                    'deal_id' => $dealId,
+                    'result' => $result
+                ]);
+                return $result['result'] ?? null;
+            }
+
+            Log::error('Ошибка при получении товаров сделки из Битрикс24', [
+                'deal_id' => $dealId,
+                'response' => $response->json()
+            ]);
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Исключение при получении товаров сделки из Битрикс24', [
+                'deal_id' => $dealId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
 }

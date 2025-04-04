@@ -4,16 +4,26 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Services\TelegramService;
+use App\Services\Bitrix24\DealService;
+use App\Services\Bitrix24\ProductService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class Bitrix24EventController extends Controller
 {
+    protected $webhookToken;
+    protected $dealService;
+    protected $productService;
     protected $telegramService;
-    protected $webhookToken = 'n0or614p5p0fs5b9jd9nx57te921wnqg';
 
-    public function __construct(TelegramService $telegramService)
-    {
+    public function __construct(
+        DealService $dealService,
+        ProductService $productService,
+        TelegramService $telegramService
+    ) {
+        $this->webhookToken = config('services.bitrix24.webhook_token');
+        $this->dealService = $dealService;
+        $this->productService = $productService;
         $this->telegramService = $telegramService;
     }
 
@@ -128,6 +138,25 @@ class Bitrix24EventController extends Controller
 
                             // Формируем сообщение для пользователя
                             $message = "📦 *Заказ #{$order->id}* | *Buyurtma #{$order->id}*\n\n";
+
+                            // Добавляем информацию о товарах
+                            $message .= "*Состав заказа:*\n";
+                            $message .= "*Buyurtma tarkibi:*\n";
+                            foreach ($order->items as $item) {
+                                $message .= "• {$item->product->name} x {$item->quantity} шт. = {$item->price} сум\n";
+                            }
+                            $message .= "\n";
+
+                            // Получаем товары сделки из Битрикс24
+                            $dealProducts = $this->productService->getDealProducts($dealId);
+                            if ($dealProducts) {
+                                $message .= "*Товары в Битрикс24:*\n";
+                                $message .= "*Bitrix24 dagi tovarlar:*\n";
+                                foreach ($dealProducts as $product) {
+                                    $message .= "• {$product['PRODUCT_NAME']} x {$product['QUANTITY']} шт. = {$product['PRICE']} сум\n";
+                                }
+                                $message .= "\n";
+                            }
 
                             // Добавляем информацию в зависимости от статуса
                             switch ($newStatus) {

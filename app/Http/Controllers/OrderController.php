@@ -49,7 +49,7 @@ class OrderController extends Controller
                 'STAGE_ID' => 'NEW',
                 'CURRENCY_ID' => 'UZS',
                 'OPPORTUNITY' => $request->total_amount,
-                'ASSIGNED_BY_ID' => 3,
+                'ASSIGNED_BY_ID' => 17,
                 'CONTACT_ID' => $user->bitrix_contact_id,
                 'PRODUCT_ROWS' => $this->formatProducts($request->cart),
                 'COMMENTS' => json_encode([
