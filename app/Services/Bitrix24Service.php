@@ -246,9 +246,10 @@ class Bitrix24Service
     public function createDeal(array $dealData)
     {
         try {
-            // Извлекаем товары из данных сделки
+            // Извлекаем товары и контакт из данных сделки
             $products = $dealData['PRODUCT_ROWS'] ?? [];
-            unset($dealData['PRODUCT_ROWS']);
+            $contactId = $dealData['CONTACT_ID'] ?? null;
+            unset($dealData['PRODUCT_ROWS'], $dealData['CONTACT_ID']);
 
             // Создаем сделку
             $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
@@ -264,6 +265,35 @@ class Bitrix24Service
             }
 
             $dealId = $result['result'];
+
+            // Если есть контакт, привязываем его к сделке
+            if ($contactId) {
+                $response = $this->client->post($this->webhookUrl . 'crm.deal.contact.add', [
+                    'json' => [
+                        'id' => $dealId,
+                        'fields' => [
+                            'CONTACT_ID' => $contactId,
+                            'IS_PRIMARY' => 'Y',
+                            'SORT' => 1
+                        ]
+                    ]
+                ]);
+
+                $contactResult = json_decode($response->getBody()->getContents(), true);
+
+                if (!isset($contactResult['result'])) {
+                    Log::error('Ошибка при привязке контакта к сделке:', [
+                        'deal_id' => $dealId,
+                        'contact_id' => $contactId,
+                        'response' => $contactResult
+                    ]);
+                } else {
+                    Log::info('Контакт успешно привязан к сделке', [
+                        'deal_id' => $dealId,
+                        'contact_id' => $contactId
+                    ]);
+                }
+            }
 
             // Если есть товары, добавляем их к сделке
             if (!empty($products)) {
@@ -288,7 +318,8 @@ class Bitrix24Service
             Log::info('Сделка успешно создана в Битрикс24', [
                 'deal_id' => $dealId,
                 'fields' => $dealData,
-                'products' => $products
+                'products' => $products,
+                'contact_id' => $contactId
             ]);
 
             return [
@@ -299,7 +330,8 @@ class Bitrix24Service
         } catch (Exception $e) {
             Log::error('Ошибка при создании сделки в Bitrix24: ' . $e->getMessage(), [
                 'deal_data' => $dealData,
-                'products' => $products ?? []
+                'products' => $products ?? [],
+                'contact_id' => $contactId ?? null
             ]);
             return [
                 'status' => 'error',
