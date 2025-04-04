@@ -246,13 +246,61 @@ class Bitrix24Service
     public function createDeal(array $dealData)
     {
         try {
-            return $this->dealService->createDeal($dealData);
-        } catch (\Exception $e) {
-            Log::error('Error in createDeal: ' . $e->getMessage(), [
-                'data' => $dealData,
-                'trace' => $e->getTraceAsString()
+            // Извлекаем товары из данных сделки
+            $products = $dealData['PRODUCT_ROWS'] ?? [];
+            unset($dealData['PRODUCT_ROWS']);
+
+            // Создаем сделку
+            $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
+                'json' => [
+                    'fields' => $dealData
+                ]
             ]);
 
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (!isset($result['result'])) {
+                throw new Exception('Failed to create deal: ' . json_encode($result));
+            }
+
+            $dealId = $result['result'];
+
+            // Если есть товары, добавляем их к сделке
+            if (!empty($products)) {
+                $response = $this->client->post($this->webhookUrl . 'crm.deal.productrows.set', [
+                    'json' => [
+                        'id' => $dealId,
+                        'rows' => $products
+                    ]
+                ]);
+
+                $result = json_decode($response->getBody()->getContents(), true);
+
+                if (!isset($result['result'])) {
+                    Log::error('Ошибка при добавлении товаров к сделке:', [
+                        'deal_id' => $dealId,
+                        'products' => $products,
+                        'response' => $result
+                    ]);
+                }
+            }
+
+            Log::info('Сделка успешно создана в Битрикс24', [
+                'deal_id' => $dealId,
+                'fields' => $dealData,
+                'products' => $products
+            ]);
+
+            return [
+                'status' => 'success',
+                'deal_id' => $dealId
+            ];
+
+        } catch (Exception $e) {
+            Log::error('Ошибка при создании сделки в Bitrix24: ' . $e->getMessage(), [
+                'deal_data' => $dealData,
+                'products' => $products ?? []
+            ]);
             return [
                 'status' => 'error',
                 'message' => $e->getMessage()
