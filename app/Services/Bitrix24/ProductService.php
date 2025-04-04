@@ -269,37 +269,35 @@ class ProductService extends Bitrix24BaseService
         });
     }
 
-    private function getProductPrice($productId)
+    /**
+     * Получает цену продукта
+     *
+     * @param int $productId
+     * @return array|null
+     */
+    protected function getProductPrice($productId)
     {
         try {
-            $response = $this->client->post($this->webhookUrl . 'catalog.price.list', [
+            $response = $this->client->post($this->webhookUrl . 'crm.product.get', [
                 'json' => [
-                    'filter' => [
-                        'productId' => $productId
-                    ],
-                    'select' => [
-                        'id',
-                        'currency',
-                        'productId',
-                        'price'
-                    ]
+                    'id' => $productId
                 ]
             ]);
 
             $result = json_decode($response->getBody()->getContents(), true);
 
-            // Проверяем наличие цены в ответе
-            if (isset($result['result']['prices'][0])) {
+            if (isset($result['result']) && !empty($result['result'])) {
                 return [
-                    'price' => $result['result']['prices'][0]['price'],
-                    'currency' => $result['result']['prices'][0]['currency']
+                    'price' => $result['result']['PRICE'] ?? 0,
+                    'currency' => $result['result']['CURRENCY_ID'] ?? 'UZS'
                 ];
             }
 
             return null;
-        } catch (Exception $e) {
+
+        } catch (\Exception $e) {
             Log::error('Error getting product price: ' . $e->getMessage(), [
-                'productId' => $productId
+                'product_id' => $productId
             ]);
             return null;
         }
