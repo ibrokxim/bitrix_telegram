@@ -96,12 +96,32 @@ class OrderController extends Controller
     private function formatProducts(array $cart): array
     {
         return array_map(function ($item) {
-            return [
+            $product = [
                 'PRODUCT_ID' => $item['id'],
                 'PRODUCT_NAME' => $item['name'],
                 'PRICE' => $item['price'],
-                'QUANTITY' => $item['quantity']
+                'QUANTITY' => $item['quantity'],
+                'CURRENCY_ID' => 'UZS',
+                'TAX_INCLUDED' => 'Y'  // Налог включен в цену
             ];
+
+            // Если есть скидка
+            if (isset($item['discount'])) {
+                if (isset($item['discount']['type']) && $item['discount']['type'] === 'percent') {
+                    $product['DISCOUNT_TYPE_ID'] = 2; // процентная скидка
+                    $product['DISCOUNT_RATE'] = $item['discount']['value'];
+                } else {
+                    $product['DISCOUNT_TYPE_ID'] = 1; // фиксированная скидка
+                    $product['DISCOUNT_SUM'] = $item['discount']['value'];
+                }
+            }
+
+            // Если есть налог
+            if (isset($item['tax_rate'])) {
+                $product['TAX_RATE'] = $item['tax_rate'];
+            }
+
+            return $product;
         }, $cart);
     }
 
