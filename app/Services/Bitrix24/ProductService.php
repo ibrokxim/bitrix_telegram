@@ -83,6 +83,7 @@ class ProductService extends Bitrix24BaseService
                 if (isset($result['result']) && !empty($result['result'])) {
                     $product = $result['result'];
                     $priceData = $this->getProductPrice($product['ID']);
+                    $variations = $this->getProductVariations($id);
 
                     return [
                         'id' => $product['ID'],
@@ -94,7 +95,7 @@ class ProductService extends Bitrix24BaseService
                         'measure' => 'ml',
                         'catalog_id' => $product['CATALOG_ID'],
                         'images' => $this->getProductImages($product['ID']),
-                        'variations' => $this->getProductVariations($id)
+                        'variations' => $variations
                     ];
                 }
                 return null;
@@ -237,7 +238,8 @@ class ProductService extends Bitrix24BaseService
                         ],
                         'filter' => [
                             'iblockId' => 17,
-                            'parentId' => $productId
+                            'parentId' => $productId,
+                            'ACTIVE' => 'Y'
                         ]
                     ]
                 ]);
@@ -249,15 +251,18 @@ class ProductService extends Bitrix24BaseService
                 if (isset($result['result']['offers']) && !empty($result['result']['offers'])) {
                     foreach ($result['result']['offers'] as $variation) {
                         $priceData = $this->getProductPrice($variation['id']);
-                        $variations[] = [
-                            'id' => $variation['id'],
-                            'name' => $variation['name'],
-                            'size' => $variation['property121']['valueEnum'] ?? null,
-                            'price' => $priceData ? $priceData['price'] : null,
-                            'quantity' => $variation['quantity'] ?? 0,
-                            'measure' => $variation['measure'] ?? 'ml',
-                            'parent_id' => $variation['parentId']['value'] ?? null
-                        ];
+                        if ($priceData && ($variation['quantity'] ?? 0) > 0) {
+                            $variations[] = [
+                                'id' => $variation['id'],
+                                'name' => $variation['name'],
+                                'size' => $variation['property121']['valueEnum'] ?? null,
+                                'price' => $priceData['price'],
+                                'quantity' => $variation['quantity'] ?? 0,
+                                'measure' => $variation['measure'] ?? 'ml',
+                                'parent_id' => $variation['parentId']['value'] ?? null,
+                                'available' => true
+                            ];
+                        }
                     }
                 }
 
@@ -278,26 +283,35 @@ class ProductService extends Bitrix24BaseService
     protected function getProductPrice($productId)
     {
         try {
-            $response = $this->client->post($this->webhookUrl . 'crm.product.get', [
+            $response = $this->client->post($this->webhookUrl . 'catalog.price.list', [
                 'json' => [
-                    'id' => $productId
+                    'filter' => [
+                        'productId' => $productId
+                    ],
+                    'select' => [
+                        'id',
+                        'currency',
+                        'productId',
+                        'price'
+                    ]
                 ]
             ]);
 
             $result = json_decode($response->getBody()->getContents(), true);
 
-            if (isset($result['result']) && !empty($result['result'])) {
+            // Проверяем наличие цены в ответе
+            if (isset($result['result']['prices'][0])) {
                 return [
-                    'price' => $result['result']['PRICE'] ?? 0,
-                    'currency' => $result['result']['CURRENCY_ID'] ?? 'UZS'
+                    'price' => $result['result']['prices'][0]['price'],
+                    'currency' => $result['result']['prices'][0]['currency']
                 ];
             }
 
             return null;
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error('Error getting product price: ' . $e->getMessage(), [
-                'product_id' => $productId
+                'productId' => $productId
             ]);
             return null;
         }
