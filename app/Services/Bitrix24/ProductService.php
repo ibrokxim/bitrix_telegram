@@ -69,15 +69,24 @@ class ProductService extends Bitrix24BaseService
         });
     }
 
+    /**
+     * Получает информацию о продукте по его ID
+     *
+     * @param int $id ID продукта
+     * @return array|null
+     */
     public function getProductById($id)
     {
         $cacheKey = "product_{$id}";
 
         return Cache::remember($cacheKey, $this->cacheTimeout, function () use ($id) {
             try {
-                $response = $this->client->post($this->webhookUrl . 'crm.product.get', [
+                $response = $this->client->post('', [
                     'json' => [
-                        'id' => $id,
+                        'method' => 'crm.product.get',
+                        'params' => [
+                            'id' => $id
+                        ]
                     ]
                 ]);
 
@@ -87,22 +96,29 @@ class ProductService extends Bitrix24BaseService
                     $product = $result['result'];
                     $priceData = $this->getProductPrice($product['ID']);
 
-                    return [
-                        'id' => $product['ID'],
-                        'name' => $product['NAME'],
-                        'price' => $priceData ? $priceData['price'] : $product['PRICE'],
-                        'currency' => $product['CURRENCY_ID'],
-                        'description' => $product['DESCRIPTION'],
-                        'description_uz' => $product['PROPERTY_117'],
-                        'measure' => 'ml',
-                        'catalog_id' => $product['CATALOG_ID'],
-                        'images' => $this->getProductImages($product['ID']),
-                        'variations' => $this->getProductVariations($id)
-                    ];
+                    if ($priceData) {
+                        $product['PRICE'] = $priceData['PRICE'];
+                        $product['CURRENCY_ID'] = $priceData['CURRENCY_ID'];
+                    }
+
+                    Log::info('Продукт успешно получен из Битрикс24', [
+                        'product_id' => $id,
+                        'product' => $product
+                    ]);
+
+                    return $product;
                 }
+
+                Log::warning('Продукт не найден в Битрикс24', [
+                    'product_id' => $id
+                ]);
                 return null;
-            } catch (Exception $e) {
-                \Log::error('Error getting product: ' . $e->getMessage());
+
+            } catch (\Exception $e) {
+                Log::error('Ошибка при получении продукта из Битрикс24:', [
+                    'product_id' => $id,
+                    'error' => $e->getMessage()
+                ]);
                 return null;
             }
         });
