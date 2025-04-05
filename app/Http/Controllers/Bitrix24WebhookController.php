@@ -24,10 +24,7 @@ class Bitrix24WebhookController extends Controller
         try {
             // Логируем входящие данные
             Log::info('Получено уведомление об изменении сделки', [
-                'event' => $request->input('event'),
-                'event_handler_id' => $request->input('event_handler_id'),
-                'data' => $request->input('data'),
-                'auth' => $request->input('auth')
+                'request' => $request->all()
             ]);
 
             // Проверяем тип события
@@ -39,22 +36,8 @@ class Bitrix24WebhookController extends Controller
             // Получаем ID сделки
             $dealId = $request->input('data.FIELDS.ID');
             if (!$dealId) {
-                Log::warning('ID сделки отсутствует в запросе');
+                Log::warning('ID сделки отсутствует в запросе', ['request' => $request->all()]);
                 return response()->json(['message' => 'ID сделки не указан'], 400);
-            }
-
-            // Проверяем авторизацию
-            $auth = $request->input('auth');
-            if (!$this->validateAuth($auth)) {
-                Log::warning('Ошибка авторизации вебхука', ['auth' => $auth]);
-                return response()->json(['message' => 'Ошибка авторизации'], 401);
-            }
-
-            // Получаем детали сделки из Битрикс24
-            $dealDetails = $this->dealService->getDeal($dealId);
-            if (!$dealDetails) {
-                Log::warning("Не удалось получить детали сделки {$dealId}");
-                return response()->json(['message' => 'Сделка не найдена'], 404);
             }
 
             // Находим заказ по ID сделки
@@ -69,6 +52,13 @@ class Bitrix24WebhookController extends Controller
             if (!$user || !$user->telegram_chat_id) {
                 Log::warning("Пользователь не найден или не привязан Telegram чат для заказа {$order->id}");
                 return response()->json(['message' => 'Пользователь не найден или не привязан Telegram'], 404);
+            }
+
+            // Получаем детали сделки из Битрикс24
+            $dealDetails = $this->dealService->getDeal($dealId);
+            if (!$dealDetails) {
+                Log::warning("Не удалось получить детали сделки {$dealId}");
+                return response()->json(['message' => 'Не удалось получить детали сделки'], 404);
             }
 
             // Обновляем статус заказа
@@ -91,38 +81,12 @@ class Bitrix24WebhookController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Ошибка при обработке вебхука: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
             ]);
 
             return response()->json(['message' => 'Ошибка при обработке уведомления'], 500);
         }
-    }
-
-    protected function validateAuth($auth)
-    {
-        if (!$auth) {
-            return false;
-        }
-
-        // Проверяем обязательные поля
-        $requiredFields = ['scope', 'domain', 'server_endpoint', 'status', 
-                          'client_endpoint', 'member_id', 'application_token'];
-        
-        foreach ($requiredFields as $field) {
-            if (!isset($auth[$field])) {
-                return false;
-            }
-        }
-
-        // Проверяем scope
-        if ($auth['scope'] !== 'crm') {
-            return false;
-        }
-
-        // Здесь можно добавить дополнительные проверки
-        // Например, проверку application_token
-
-        return true;
     }
 
     protected function mapBitrixStageToStatus($stageId)
