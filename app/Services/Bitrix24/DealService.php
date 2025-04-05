@@ -109,14 +109,17 @@ class DealService extends Bitrix24BaseService
     public function createDeal(array $dealData)
     {
         try {
-            // Извлекаем товары из данных сделки
+            // Извлекаем товары и контакт из данных сделки
             $products = $dealData['PRODUCT_ROWS'] ?? [];
+            $contactId = $dealData['CONTACT_ID'] ?? null;
             unset($dealData['PRODUCT_ROWS']);
 
             // Создаем сделку
             $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
                 'json' => [
-                    'fields' => $dealData
+                    'fields' => array_merge($dealData, [
+                        'CONTACT_ID' => $contactId // Добавляем ID контакта к сделке
+                    ])
                 ]
             ]);
 
@@ -151,7 +154,8 @@ class DealService extends Bitrix24BaseService
             Log::info('Сделка успешно создана в Битрикс24', [
                 'deal_id' => $dealId,
                 'fields' => $dealData,
-                'products' => $products
+                'products' => $products,
+                'contact_id' => $contactId
             ]);
 
             return [
@@ -162,7 +166,8 @@ class DealService extends Bitrix24BaseService
         } catch (Exception $e) {
             Log::error('Ошибка при создании сделки в Bitrix24: ' . $e->getMessage(), [
                 'deal_data' => $dealData,
-                'products' => $products ?? []
+                'products' => $products ?? [],
+                'contact_id' => $contactId ?? null
             ]);
             return [
                 'status' => 'error',

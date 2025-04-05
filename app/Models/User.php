@@ -18,10 +18,17 @@ class User extends Authenticatable
         'last_name',
         'phone',
         'is_legal_entity',
-        'inn','company_name',
+        'inn',
+        'company_name',
         'position',
         'status',
         'telegram_chat_id',
+        'bitrix_contact_id',
+        'bitrix_company_id',
+        'email',
+        'bitrix_phone',
+        'bitrix_email',
+        'last_sync_at'
     ];
 
     /**
