@@ -218,7 +218,7 @@ class OrderController extends Controller
     {
         $comment = [
             'Источник' => $source,
-            'Пользователь' => $user->name,
+            'Пользователь' => trim($user->first_name . ' ' . $user->last_name),
             'Телефон' => $user->phone,
             'Тип клиента' => $this->getClientType($user)
         ];
