@@ -31,6 +31,12 @@ class OrderController extends Controller
         try {
             $user = User::where('telegram_chat_id', $request->chat_id)->firstOrFail();
 
+            // Подсчитываем количество предыдущих заказов пользователя
+            $ordersCount = Order::where('user_id', $user->id)->count();
+
+            // Определяем CATEGORY_ID в зависимости от количества заказов
+            $categoryId = $ordersCount === 0 ? 0 : 5; // 0 - Новые, 5 - Старые
+
             // Создаем заказ в БД
             $order = Order::create([
                 'user_id' => $user->id,
@@ -44,9 +50,10 @@ class OrderController extends Controller
 
             // Формируем данные для Битрикс24
             $bitrixData = [
-                'TITLE' => "Заказ #{$order->id} от {$user->first_name} {$user->last_name} ",
+                'TITLE' => "Заказ #{$order->id} от {$user->first_name} {$user->last_name}",
                 'TYPE_ID' => 'SALE',
                 'STAGE_ID' => 'NEW',
+                'CATEGORY_ID' => $categoryId, // Устанавливаем нужную воронку
                 'CURRENCY_ID' => 'UZS',
                 'OPPORTUNITY' => $request->total_amount,
                 'ASSIGNED_BY_ID' => 17,
@@ -56,11 +63,15 @@ class OrderController extends Controller
                     'Источник' => 'Telegram бот',
                     'Пользователь' => $user->first_name . ' ' . $user->last_name,
                     'Телефон' => $user->phone,
-
+                    'Тип клиента' => $ordersCount === 0 ? 'Новый клиент' : 'Существующий клиент'
                 ])
             ];
 
-            Log::info('Sending to Bitrix24:', $bitrixData);
+            Log::info('Sending to Bitrix24:', [
+                'data' => $bitrixData,
+                'orders_count' => $ordersCount,
+                'category_id' => $categoryId
+            ]);
 
             // Создаем сделку
             $bitrixResponse = $this->bitrix24Service->createDeal($bitrixData);
@@ -81,11 +92,15 @@ class OrderController extends Controller
             return response()->json([
                 'status' => 'success',
                 'order_id' => $order->id,
-                'bitrix_deal_id' => $bitrixResponse['deal_id']
+                'bitrix_deal_id' => $bitrixResponse['deal_id'],
+                'category' => $categoryId === 0 ? 'Новые' : 'Старые'
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Order Error: ' . $e->getMessage());
+            Log::error('Order Error: ' . $e->getMessage(), [
+                'user_id' => $user->id ?? null,
+                'request_data' => $request->all()
+            ]);
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage()
