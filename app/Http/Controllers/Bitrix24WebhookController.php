@@ -2,121 +2,54 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
-use App\Services\TelegramService;
 use App\Services\Bitrix24\DealService;
+use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class Bitrix24WebhookController extends Controller
 {
-    protected $telegramService;
     protected $dealService;
+    protected $telegramService;
 
-    public function __construct(TelegramService $telegramService, DealService $dealService)
+    public function __construct(DealService $dealService, TelegramService $telegramService)
     {
-        $this->telegramService = $telegramService;
         $this->dealService = $dealService;
+        $this->telegramService = $telegramService;
     }
 
     public function handleDealUpdate(Request $request)
     {
         try {
-            // Получаем и проверяем данные
-            $data = $request->all();
-            Log::info('Webhook data received', ['data' => $data]);
+            Log::info('Webhook data received', ['data' => $request->all()]);
 
-            if (!isset($data['data']['FIELDS']['ID'])) {
-                return response()->json(['error' => 'Deal ID not provided'], 400);
+            $dealId = $request->input('data.FIELDS.ID');
+            if (!$dealId) {
+                throw new \Exception('Deal ID not found in webhook data');
             }
 
-            $dealId = $data['data']['FIELDS']['ID'];
-            
-            // Получаем детали сделки
-            $dealDetails = $this->dealService->getDeal($dealId);
-            if (!$dealDetails) {
-                return response()->json(['error' => 'Deal not found'], 404);
+            $deal = $this->dealService->getDeal($dealId);
+            if (!$deal) {
+                throw new \Exception('Deal not found: ' . $dealId);
             }
 
-            // Находим заказ
-            $order = Order::where('bitrix_deal_id', $dealId)->first();
-            if (!$order) {
-                return response()->json(['error' => 'Order not found'], 404);
-            }
+            // Формируем сообщение для Telegram
+            $message = "🔔 Обновление статуса заказа\n\n";
+            $message .= "📦 Заказ №{$dealId}\n";
+            $message .= "📊 Новый статус: {$deal['STAGE_ID']}\n";
 
-            // Проверяем пользователя
-            $user = $order->user;
-            if (!$user || !$user->telegram_chat_id) {
-                return response()->json(['error' => 'User not found or Telegram not connected'], 404);
-            }
+            // Отправляем уведомление в Telegram
+            $this->telegramService->sendMessageToAdmin($message);
 
-            // Обновляем статус
-            $newStageId = $dealDetails['STAGE_ID'] ?? null;
-            if ($newStageId) {
-                $oldStatus = $order->status;
-                $order->status = $this->mapBitrixStageToStatus($newStageId);
-                $order->save();
-
-                // Отправляем уведомление
-                $message = $this->getStatusMessage($order->status, $order->id, $newStageId);
-                $this->telegramService->sendMessage($user->telegram_chat_id, $message);
-            }
-
-            return response()->json(['success' => true]);
+            return response()->json(['status' => 'success']);
 
         } catch (\Exception $e) {
-            Log::error('Webhook error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+            Log::error($e->getMessage(), [
+                'deal_id' => $dealId ?? null,
+                'error' => $e->getMessage()
             ]);
 
-            return response()->json(['error' => 'Internal error'], 500);
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
-    }
-
-    protected function mapBitrixStageToStatus($stageId)
-    {
-        $statusMap = [
-            'NEW' => 'new',
-            'PREPARATION' => 'processing',
-            'PREPAYMENT_INVOICE' => 'pending_payment',
-            'EXECUTING' => 'processing',
-            'FINAL_INVOICE' => 'completed',
-            'WON' => 'completed',
-            'LOSE' => 'cancelled',
-        ];
-
-        return $statusMap[$stageId] ?? 'unknown';
-    }
-
-    protected function getBitrixStageName($stageId)
-    {
-        $stageNames = [
-            'NEW' => 'Новый',
-            'PREPARATION' => 'Подготовка',
-            'PREPAYMENT_INVOICE' => 'Ожидает оплату',
-            'EXECUTING' => 'В работе',
-            'FINAL_INVOICE' => 'Готов к выдаче',
-            'WON' => 'Выполнен',
-            'LOSE' => 'Отказано',
-        ];
-
-        return $stageNames[$stageId] ?? $stageId;
-    }
-
-    protected function getStatusMessage($status, $orderId, $bitrixStageId)
-    {
-        // Получаем название стадии из Битрикс24
-        $stageName = $this->dealService->getStageName($bitrixStageId);
-        
-        $messages = [
-            'new' => "Ваш заказ #{$orderId} принят в обработку\nСтатус: {$stageName}",
-            'processing' => "Заказ #{$orderId} обрабатывается\nСтатус: {$stageName}",
-            'pending_payment' => "Ожидается оплата заказа #{$orderId}\nСтатус: {$stageName}",
-            'completed' => "Заказ #{$orderId} выполнен\nСтатус: {$stageName}",
-            'cancelled' => "Заказ #{$orderId} отменен\nСтатус: {$stageName}",
-            'unknown' => "Статус заказа #{$orderId} обновлен\nНовый статус: {$stageName}",
-        ];
-
-        return $messages[$status] ?? $messages['unknown'];
     }
 }

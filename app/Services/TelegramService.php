@@ -12,11 +12,13 @@ class TelegramService
 {
     protected $bot;
     protected $adminChatId;
+    protected $token;
 
     public function __construct()
     {
         $this->bot = new TelegramBot(env('TELEGRAM_BOT_TOKEN'));
         $this->adminChatId = env('TELEGRAM_ADMIN_GROUP_ID');
+        $this->token = config('services.telegram.bot_token');
     }
 
     public function sendMessageToAdminGroup($message, $keyboard = null, $parseMode = false)
