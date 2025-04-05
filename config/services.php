@@ -38,6 +38,7 @@ return [
 
     'bitrix24' => [
         'webhook_url' => env('BITRIX24_WEBHOOK_URL'),
+        'incoming_webhook_url' => env('BITRIX24_INCOMING_WEBHOOK_URL'),
         'webhook_secret' => env('BITRIX24_WEBHOOK_SECRET'),
         'default_assigned_id' => env('BITRIX24_DEFAULT_ASSIGNED_ID', 17),
     ],

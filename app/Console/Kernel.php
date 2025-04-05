@@ -2,11 +2,24 @@
 
 namespace App\Console;
 
+use App\Console\Commands\RegisterBitrix24Webhook;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
+    /**
+     * The Artisan commands provided by your application.
+     *
+     * @var array
+     */
+    protected $commands = [
+        Commands\SetTelegramWebhook::class,
+        Commands\ClearProductCache::class,
+        Commands\SyncBitrixUsers::class,
+        RegisterBitrix24Webhook::class,
+    ];
+
     /**
      * Define the application's command schedule.
      */
@@ -25,9 +38,4 @@ class Kernel extends ConsoleKernel
 
         require base_path('routes/console.php');
     }
-    protected $commands = [
-        Commands\SetTelegramWebhook::class,
-        Commands\ClearProductCache::class,
-        Commands\SyncBitrixUsers::class,
-    ];
 }
