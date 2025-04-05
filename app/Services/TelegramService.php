@@ -442,6 +442,26 @@ Barcha mahsulotlarni ko'rish uchun quyidagi tugmani bosing 👇 va ro'yxatdan o'
             return false;
         }
 
+        // Обработка текста перед отправкой
+        $message = $this->sanitizeMessage($message);
+
         return $this->sendMessage($adminGroupId, $message);
+    }
+
+    /**
+     * Очищает текст сообщения от проблемных символов
+     */
+    protected function sanitizeMessage($message)
+    {
+        // Преобразуем текст в UTF-8
+        $message = mb_convert_encoding($message, 'UTF-8', 'UTF-8');
+        
+        // Удаляем непечатаемые символы
+        $message = preg_replace('/[\x00-\x1F\x7F]/u', '', $message);
+        
+        // Заменяем множественные пробелы одним
+        $message = preg_replace('/\s+/', ' ', $message);
+        
+        return trim($message);
     }
 }
