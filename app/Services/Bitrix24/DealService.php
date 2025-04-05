@@ -134,17 +134,21 @@ class DealService extends Bitrix24BaseService
     public function getDeal($dealId)
     {
         try {
-            $response = $this->bitrix24->request('crm.deal.get', [
-                'id' => $dealId
+            $response = $this->client->get($this->webhookUrl . 'crm.deal.get', [
+                'query' => [
+                    'id' => $dealId
+                ]
             ]);
 
-            if (isset($response['result'])) {
-                return $response['result'];
+            $responseData = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($responseData['result'])) {
+                return $responseData['result'];
             }
 
             Log::error('Не удалось получить данные сделки', [
                 'deal_id' => $dealId,
-                'response' => $response
+                'response' => $responseData
             ]);
 
             return null;
