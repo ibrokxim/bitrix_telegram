@@ -59,12 +59,7 @@ class OrderController extends Controller
                 'ASSIGNED_BY_ID' => 17,
                 'CONTACT_ID' => $user->bitrix_contact_id,
                 'PRODUCT_ROWS' => $this->formatProducts($request->cart),
-                'COMMENTS' => json_encode([
-                    'Источник' => 'Telegram бот',
-                    'Пользователь' => $user->first_name . ' ' . $user->last_name,
-                    'Телефон' => $user->phone,
-                    'Тип клиента' => $ordersCount === 0 ? 'Новый клиент' : 'Существующий клиент'
-                ])
+                'COMMENTS' => $this->prepareDealComment($user)
             ];
 
             Log::info('Sending to Bitrix24:', [
@@ -217,5 +212,23 @@ class OrderController extends Controller
         }
 
         return $phone;
+    }
+
+    protected function prepareDealComment($user, $source = 'Telegram бот')
+    {
+        $comment = [
+            'Источник' => $source,
+            'Пользователь' => $user->name,
+            'Телефон' => $user->phone,
+            'Тип клиента' => $this->getClientType($user)
+        ];
+
+        return json_encode($comment, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    }
+
+    protected function getClientType($user)
+    {
+        $ordersCount = Order::where('user_id', $user->id)->count();
+        return $ordersCount > 0 ? 'Существующий клиент' : 'Новый клиент';
     }
 }
