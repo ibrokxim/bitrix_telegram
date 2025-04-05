@@ -22,7 +22,6 @@ class Bitrix24WebhookController extends Controller
     public function handleDealUpdate(Request $request)
     {
         try {
-            // Получаем и проверяем данные
             $data = $request->all();
             Log::info('Webhook data received', ['data' => $data]);
 
@@ -34,6 +33,16 @@ class Bitrix24WebhookController extends Controller
             $dealId = $data['data']['FIELDS']['ID'];
             Log::info('Processing deal', ['deal_id' => $dealId]);
             
+            // Получаем детали сделки через API Bitrix24
+            $dealDetails = $this->dealService->getDeal($dealId);
+            if (!$dealDetails) {
+                Log::error('Failed to get deal details from Bitrix24', ['deal_id' => $dealId]);
+                return response()->json(['error' => 'Failed to get deal details'], 404);
+            }
+
+            $newStageId = $dealDetails['STAGE_ID'] ?? null;
+            Log::info('Stage ID from Bitrix24', ['stage_id' => $newStageId, 'deal_details' => $dealDetails]);
+
             // Находим заказ
             $order = Order::where('bitrix_deal_id', $dealId)->first();
             if (!$order) {
@@ -54,10 +63,6 @@ class Bitrix24WebhookController extends Controller
             }
             Log::info('Found user', ['user_id' => $user->id, 'telegram_chat_id' => $user->telegram_chat_id]);
 
-            // Получаем новый статус из Bitrix24
-            $newStageId = $data['data']['FIELDS']['STAGE_ID'] ?? null;
-            Log::info('Stage ID from webhook', ['stage_id' => $newStageId]);
-            
             if ($newStageId) {
                 $oldStatus = $order->status;
                 $newStatus = $this->mapBitrixStageToStatus($newStageId);
@@ -85,14 +90,15 @@ class Bitrix24WebhookController extends Controller
                     ]);
                 }
             } else {
-                Log::info('No stage ID in webhook data, skipping update');
+                Log::info('No stage ID in deal details, skipping update');
             }
 
             return response()->json(['success' => true]);
 
         } catch (\Exception $e) {
             Log::error('Webhook error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'deal_id' => $dealId ?? null
             ]);
 
             return response()->json(['error' => 'Internal error'], 500);
@@ -102,13 +108,16 @@ class Bitrix24WebhookController extends Controller
     protected function mapBitrixStageToStatus($stageId)
     {
         $statusMap = [
-            'NEW' => 'new',
-            'PREPARATION' => 'processing',
-            'PREPAYMENT_INVOICE' => 'pending_payment',
-            'EXECUTING' => 'processing',
-            'FINAL_INVOICE' => 'completed',
-            'WON' => 'completed',
-            'LOSE' => 'cancelled',
+            'NEW' => 'new',                    // Заявка принята
+            'PREPARATION' => 'processing',      // Квалификация проведена
+            'PREPAYMENT_INVOICE' => 'processing', // Встреча назначена
+            'EXECUTING' => 'processing',        // Встреча проведена
+            'FINAL_INVOICE' => 'processing',    // Дожим на договор
+            '1' => 'processing',               // Договор составлен
+            '2' => 'pending_payment',          // Оплата получена
+            'WON' => 'completed',              // Сделка успешна
+            'LOSE' => 'cancelled',             // Сделка провалена
+            'APOLOGY' => 'cancelled',          // Анализ причины провала
         ];
 
         return $statusMap[$stageId] ?? 'unknown';
@@ -117,24 +126,27 @@ class Bitrix24WebhookController extends Controller
     protected function getStatusMessage($status, $orderId, $bitrixStageId)
     {
         $stageNames = [
-            'NEW' => 'Новый',
-            'PREPARATION' => 'В обработке',
-            'PREPAYMENT_INVOICE' => 'Ожидает оплату',
-            'EXECUTING' => 'В работе',
-            'FINAL_INVOICE' => 'Готов к выдаче',
-            'WON' => 'Выполнен',
-            'LOSE' => 'Отменён'
+            'NEW' => 'Заявка принята',
+            'PREPARATION' => 'Квалификация проведена',
+            'PREPAYMENT_INVOICE' => 'Встреча назначена',
+            'EXECUTING' => 'Встреча проведена',
+            'FINAL_INVOICE' => 'Дожим на договор',
+            '1' => 'Договор составлен',
+            '2' => 'Оплата получена',
+            'WON' => 'Сделка успешна',
+            'LOSE' => 'Сделка провалена',
+            'APOLOGY' => 'Анализ причины провала'
         ];
 
         $stageName = $stageNames[$bitrixStageId] ?? $bitrixStageId;
         
         $messages = [
-            'new' => "🆕 Ваш заказ #{$orderId} принят в обработку\nСтатус: {$stageName}",
-            'processing' => "⚙️ Заказ #{$orderId} обрабатывается\nСтатус: {$stageName}",
-            'pending_payment' => "💳 Ожидается оплата заказа #{$orderId}\nСтатус: {$stageName}",
-            'completed' => "✅ Заказ #{$orderId} выполнен\nСтатус: {$stageName}",
-            'cancelled' => "❌ Заказ #{$orderId} отменен\nСтатус: {$stageName}",
-            'unknown' => "ℹ️ Статус заказа #{$orderId} обновлен\nНовый статус: {$stageName}",
+            'new' => "🆕 Ваш заказ #{$orderId}\nСтатус: {$stageName}",
+            'processing' => "⚙️ Заказ #{$orderId}\nСтатус: {$stageName}",
+            'pending_payment' => "💳 Заказ #{$orderId}\nСтатус: {$stageName}",
+            'completed' => "✅ Заказ #{$orderId}\nСтатус: {$stageName}",
+            'cancelled' => "❌ Заказ #{$orderId}\nСтатус: {$stageName}",
+            'unknown' => "ℹ️ Заказ #{$orderId}\nСтатус: {$stageName}",
         ];
 
         return $messages[$status] ?? $messages['unknown'];
