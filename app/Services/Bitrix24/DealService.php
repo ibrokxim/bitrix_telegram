@@ -15,257 +15,97 @@ class DealService extends Bitrix24BaseService
     }
 
     /**
-     * Создает новый лид в Битрикс24
+     * Создает новую сделку в Битрикс24
      *
-     * @param array $leadData Данные лида
-     * @return array Результат создания лида
+     * @param array $dealData Данные сделки
+     * @return array Результат создания сделки
      */
-    public function createLead(array $leadData)
+    public function createDeal(array $dealData)
     {
         try {
-            $response = $this->client->post($this->webhookUrl . 'crm.lead.add', [
+            // Извлекаем товары и контакт из данных сделки
+            $products = $dealData['PRODUCTS'] ?? [];
+            $contactId = $dealData['CONTACT_ID'] ?? null;
+            unset($dealData['PRODUCTS'], $dealData['CONTACT_ID']);
+
+            // Создаем сделку
+            $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
                 'json' => [
-                    'fields' => $leadData,
+                    'fields' => $dealData,
                     'params' => ['REGISTER_SONET_EVENT' => 'Y']
                 ]
             ]);
 
-            $result = json_decode($response->getBody()->getContents(), true);
-
-            if (isset($result['result'])) {
-                return [
-                    'status' => 'success',
-                    'lead_id' => $result['result']
-                ];
+            if (!$response->getStatusCode() === 200) {
+                throw new Exception('Failed to create deal: ' . $response->getBody()->getContents());
             }
 
-            return [
-                'status' => 'error',
-                'message' => 'Failed to create lead in Bitrix24'
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Ошибка при создании лида в Bitrix24: ' . $e->getMessage(), [
-                'lead_data' => $leadData
-            ]);
-            return [
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ];
-        }
-    }
-
-    /**
-     * Обновляет статус лида в Битрикс24
-     *
-     * @param int $leadId ID лида
-     * @param string $status Новый статус
-     * @return array Результат обновления статуса
-     */
-    public function updateLeadStatus($leadId, $status)
-    {
-        try {
-            $response = $this->client->post($this->webhookUrl . 'crm.lead.update', [
-                'json' => [
-                    'id' => $leadId,
-                    'fields' => [
-                        'STATUS_ID' => $status
-                    ]
-                ]
-            ]);
-
             $result = json_decode($response->getBody()->getContents(), true);
-
-            if (isset($result['result']) && $result['result']) {
-                return [
-                    'status' => 'success',
-                    'lead_id' => $leadId
-                ];
-            }
-
-            return [
-                'status' => 'error',
-                'message' => 'Failed to update lead status in Bitrix24'
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Ошибка при обновлении статуса лида в Bitrix24: ' . $e->getMessage(), [
-                'lead_id' => $leadId,
-                'status' => $status
-            ]);
-            return [
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ];
-        }
-    }
-
-    /**
-     * Форматирует комментарий для сделки
-     */
-    protected function formatComment($comment)
-    {
-        if (empty($comment)) {
-            return '';
-        }
-
-        try {
-            return json_encode(json_decode($comment), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        } catch (\Exception $e) {
-            return $comment;
-        }
-    }
-
-    /**
-     * Создает сделку в Битрикс24
-     */
-    public function createDeal(array $dealData)
-    {
-        if (isset($dealData['COMMENTS'])) {
-            $dealData['COMMENTS'] = $this->formatComment($dealData['COMMENTS']);
-        }
-
-        try {
-            $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
-                'json' => [
-                    'fields' => $dealData
-                ]
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true);
-
-            if (isset($result['result'])) {
-                return $result['result'];
-            }
-
-            Log::error('Ошибка при создании сделки в Битрикс24', [
-                'deal_data' => $dealData,
-                'response' => $result
-            ]);
-
-            return null;
-
-        } catch (\Exception $e) {
-            Log::error('Ошибка при запросе к Битрикс24: ' . $e->getMessage(), [
-                'deal_data' => $dealData,
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return null;
-        }
-    }
-
-    /**
-     * Обновляет сделку в Битрикс24
-     */
-    public function updateDeal($dealId, array $dealData)
-    {
-        if (isset($dealData['COMMENTS'])) {
-            $dealData['COMMENTS'] = $this->formatComment($dealData['COMMENTS']);
-        }
-
-        try {
-            $response = $this->client->post($this->webhookUrl . 'crm.deal.update', [
-                'json' => [
-                    'id' => $dealId,
-                    'fields' => $dealData
-                ]
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true);
-
-            if (isset($result['result']) && $result['result']) {
-                return true;
-            }
-
-            Log::error('Ошибка при обновлении сделки в Битрикс24', [
-                'deal_id' => $dealId,
-                'deal_data' => $dealData,
-                'response' => $result
-            ]);
-
-            return false;
-
-        } catch (\Exception $e) {
-            Log::error('Ошибка при запросе к Битрикс24: ' . $e->getMessage(), [
-                'deal_id' => $dealId,
-                'deal_data' => $dealData,
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return false;
-        }
-    }
-
-    /**
-     * Получает список товаров с ценой больше нуля
-     */
-    public function getAvailableProducts()
-    {
-        try {
-            $response = $this->client->post($this->webhookUrl . 'crm.product.list', [
-                'json' => [
-                    'filter' => [
-                        '>PRICE' => 0
-                    ],
-                    'select' => ['ID', 'NAME', 'PRICE', 'CURRENCY_ID']
-                ]
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true);
-
-            if (!isset($result['result'])) {
-                throw new Exception('Не удалось получить список товаров');
-            }
-
-            return [
-                'status' => 'success',
-                'products' => $result['result']
-            ];
-
-        } catch (Exception $e) {
-            Log::error('Ошибка при получении списка товаров: ' . $e->getMessage());
-            return [
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ];
-        }
-    }
-
-    /**
-     * Создает сделку с товарами
-     */
-    public function createDealWithProducts(array $dealData, array $products)
-    {
-        try {
-            // Создаем сделку
-            $response = $this->client->post($this->webhookUrl . 'crm.deal.add', [
-                'json' => [
-                    'fields' => $dealData
-                ]
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true);
-
-            if (!isset($result['result'])) {
-                throw new Exception('Не удалось создать сделку');
-            }
-
             $dealId = $result['result'];
 
-            // Добавляем товары к сделке
-            $response = $this->client->post($this->webhookUrl . 'crm.deal.productrows.set', [
-                'json' => [
-                    'id' => $dealId,
-                    'rows' => $products
-                ]
-            ]);
+            // Добавляем товары к сделке, если они указаны
+            if (!empty($products)) {
+                $formattedProducts = array_map(function ($product) {
+                    return [
+                        'PRODUCT_ID' => $product['id'],
+                        'PRODUCT_NAME' => $product['name'],
+                        'PRICE' => (float)$product['price'],
+                        'QUANTITY' => (float)$product['quantity'],
+                        'CURRENCY_ID' => 'UZS',
+                    ];
+                }, $products);
 
-            $result = json_decode($response->getBody()->getContents(), true);
+                $productsResponse = $this->client->post($this->webhookUrl . 'crm.deal.productrows.set', [
+                    'json' => [
+                        'id' => $dealId,
+                        'rows' => $formattedProducts
+                    ]
+                ]);
 
-            if (!isset($result['result'])) {
-                throw new Exception('Не удалось добавить товары к сделке');
+                if (!$productsResponse->getStatusCode() === 200) {
+                    Log::error('Ошибка при добавлении товаров к сделке:', [
+                        'deal_id' => $dealId,
+                        'error' => $productsResponse->getBody()->getContents(),
+                        'products' => $formattedProducts
+                    ]);
+                } else {
+                    Log::info('Товары успешно добавлены к сделке:', [
+                        'deal_id' => $dealId,
+                        'products_count' => count($formattedProducts)
+                    ]);
+                }
             }
+
+            // Добавляем контакт к сделке, если указан
+            if ($contactId) {
+                $contactResponse = $this->client->post($this->webhookUrl . 'crm.deal.contact.add', [
+                    'json' => [
+                        'id' => $dealId,
+                        'fields' => [
+                            'CONTACT_ID' => $contactId,
+                            'IS_PRIMARY' => 'Y'
+                        ]
+                    ]
+                ]);
+
+                if (!$contactResponse->getStatusCode() === 200) {
+                    Log::error('Ошибка при добавлении контакта к сделке:', [
+                        'deal_id' => $dealId,
+                        'contact_id' => $contactId,
+                        'error' => $contactResponse->getBody()->getContents()
+                    ]);
+                } else {
+                    Log::info('Контакт успешно добавлен к сделке:', [
+                        'deal_id' => $dealId,
+                        'contact_id' => $contactId
+                    ]);
+                }
+            }
+
+            Log::info('Сделка успешно создана в Битрикс24', [
+                'deal_id' => $dealId,
+                'fields' => $dealData
+            ]);
 
             return [
                 'status' => 'success',
@@ -273,140 +113,15 @@ class DealService extends Bitrix24BaseService
             ];
 
         } catch (Exception $e) {
-            Log::error('Ошибка при создании сделки с товарами: ' . $e->getMessage(), [
+            Log::error('Ошибка при создании сделки в Bitrix24: ' . $e->getMessage(), [
                 'deal_data' => $dealData,
-                'products' => $products
+                'products' => $products ?? [],
+                'contact_id' => $contactId ?? null
             ]);
             return [
                 'status' => 'error',
                 'message' => $e->getMessage()
             ];
         }
-    }
-
-    /**
-     * Форматирует товар для добавления к сделке
-     */
-    public function formatProductRow(array $product, array $options = [])
-    {
-        $row = [
-            'PRODUCT_ID' => $product['ID'],
-            'QUANTITY' => $options['quantity'] ?? 1
-        ];
-
-        // Базовая цена
-        if (isset($options['price_exclusive'])) {
-            $row['PRICE_EXCLUSIVE'] = $options['price_exclusive'];
-        } else {
-            $row['PRICE'] = $options['price'] ?? $product['PRICE'];
-        }
-
-        // Налог
-        if (isset($options['tax_rate'])) {
-            $row['TAX_RATE'] = $options['tax_rate'];
-            $row['TAX_INCLUDED'] = $options['tax_included'] ?? 'N';
-        }
-
-        // Скидка
-        if (isset($options['discount_sum'])) {
-            $row['DISCOUNT_SUM'] = $options['discount_sum'];
-            $row['DISCOUNT_TYPE_ID'] = 1; // фиксированная сумма
-        } elseif (isset($options['discount_rate'])) {
-            $row['DISCOUNT_RATE'] = $options['discount_rate'];
-            $row['DISCOUNT_TYPE_ID'] = 2; // процент
-        }
-
-        return $row;
-    }
-
-    /**
-     * Получает информацию о сделке по её ID
-     */
-    public function getDeal($dealId)
-    {
-        try {
-            $response = $this->client->get($this->webhookUrl . 'crm.deal.get', [
-                'query' => [
-                    'id' => $dealId
-                ]
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true);
-
-            if (isset($result['result'])) {
-                return $result['result'];
-            }
-
-            Log::error('Ошибка при получении сделки из Битрикс24', [
-                'deal_id' => $dealId,
-                'response' => $result
-            ]);
-
-            return null;
-
-        } catch (\Exception $e) {
-            Log::error('Ошибка при запросе к Битрикс24: ' . $e->getMessage(), [
-                'deal_id' => $dealId,
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return null;
-        }
-    }
-
-    /**
-     * Получает список всех стадий сделок
-     */
-    public function getDealStages()
-    {
-        try {
-            $response = $this->client->get($this->webhookUrl . 'crm.dealcategory.stage.list');
-            $result = json_decode($response->getBody()->getContents(), true);
-
-            if (isset($result['result'])) {
-                Log::info('Получены стадии сделок:', ['stages' => $result['result']]);
-                return $result['result'];
-            }
-
-            Log::error('Ошибка при получении стадий сделок', ['response' => $result]);
-            return null;
-
-        } catch (\Exception $e) {
-            Log::error('Ошибка при запросе стадий сделок: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
-            ]);
-            return null;
-        }
-    }
-
-    /**
-     * Получает название стадии по её ID
-     */
-    public function getStageName($stageId)
-    {
-        $stageNames = [
-            'NEW' => 'Заявка принята',
-            'PREPARATION' => 'Квалификация проведена',
-            'PREPAYMENT_INVOICE' => 'Встреча назначена',
-            'EXECUTING' => 'Встреча проведена',
-            'FINAL_INVOICE' => 'Дожим на договор',
-            '1' => 'Договор составлен',
-            '2' => 'Оплата получена',
-            'WON' => 'Сделка успешна',
-            'LOSE' => 'Сделка провалена',
-            'APOLOGY' => 'Анализ причины провала'
-        ];
-
-        // Если это стадия из определенной воронки (формат C5:NEW)
-        if (strpos($stageId, ':') !== false) {
-            list($category, $stage) = explode(':', $stageId);
-            // Проверяем есть ли стадия в нашем списке
-            if (isset($stageNames[$stage])) {
-                return $stageNames[$stage];
-            }
-        }
-
-        // Проверяем обычный ID
-        return $stageNames[$stageId] ?? $stageId;
     }
 }

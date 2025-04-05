@@ -429,4 +429,19 @@ Barcha mahsulotlarni ko'rish uchun quyidagi tugmani bosing 👇 va ro'yxatdan o'
             return null;
         }
     }
+
+    /**
+     * Отправляет сообщение в админскую группу
+     */
+    public function sendMessageToAdmin($message)
+    {
+        $adminGroupId = config('services.telegram.admin_group_id');
+        
+        if (!$adminGroupId) {
+            Log::error('ID админской группы Telegram не настроен');
+            return false;
+        }
+
+        return $this->sendMessage($adminGroupId, $message);
+    }
 }
