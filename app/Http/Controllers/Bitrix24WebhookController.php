@@ -27,33 +27,65 @@ class Bitrix24WebhookController extends Controller
             Log::info('Webhook data received', ['data' => $data]);
 
             if (!isset($data['data']['FIELDS']['ID'])) {
+                Log::error('Deal ID not found in webhook data', ['data' => $data]);
                 return response()->json(['error' => 'Deal ID not provided'], 400);
             }
 
             $dealId = $data['data']['FIELDS']['ID'];
+            Log::info('Processing deal', ['deal_id' => $dealId]);
             
             // Находим заказ
             $order = Order::where('bitrix_deal_id', $dealId)->first();
             if (!$order) {
+                Log::error('Order not found for deal', ['deal_id' => $dealId]);
                 return response()->json(['error' => 'Order not found'], 404);
             }
+            Log::info('Found order', ['order_id' => $order->id, 'deal_id' => $dealId]);
 
             // Проверяем пользователя
             $user = $order->user;
-            if (!$user || !$user->telegram_chat_id) {
-                return response()->json(['error' => 'User not found or Telegram not connected'], 404);
+            if (!$user) {
+                Log::error('User not found for order', ['order_id' => $order->id]);
+                return response()->json(['error' => 'User not found'], 404);
             }
+            if (!$user->telegram_chat_id) {
+                Log::error('Telegram chat ID not found for user', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Telegram not connected'], 404);
+            }
+            Log::info('Found user', ['user_id' => $user->id, 'telegram_chat_id' => $user->telegram_chat_id]);
 
             // Получаем новый статус из Bitrix24
             $newStageId = $data['data']['FIELDS']['STAGE_ID'] ?? null;
+            Log::info('Stage ID from webhook', ['stage_id' => $newStageId]);
+            
             if ($newStageId) {
                 $oldStatus = $order->status;
-                $order->status = $this->mapBitrixStageToStatus($newStageId);
+                $newStatus = $this->mapBitrixStageToStatus($newStageId);
+                Log::info('Status mapping', [
+                    'old_status' => $oldStatus,
+                    'new_status' => $newStatus,
+                    'bitrix_stage' => $newStageId
+                ]);
+
+                $order->status = $newStatus;
                 $order->save();
 
                 // Отправляем уведомление пользователю
-                $message = $this->getStatusMessage($order->status, $order->id, $newStageId);
-                $this->telegramService->sendMessage($user->telegram_chat_id, $message);
+                $message = $this->getStatusMessage($newStatus, $order->id, $newStageId);
+                Log::info('Sending message to user', [
+                    'chat_id' => $user->telegram_chat_id,
+                    'message' => $message
+                ]);
+
+                $sent = $this->telegramService->sendMessage($user->telegram_chat_id, $message);
+                if (!$sent) {
+                    Log::error('Failed to send Telegram message', [
+                        'chat_id' => $user->telegram_chat_id,
+                        'message' => $message
+                    ]);
+                }
+            } else {
+                Log::info('No stage ID in webhook data, skipping update');
             }
 
             return response()->json(['success' => true]);

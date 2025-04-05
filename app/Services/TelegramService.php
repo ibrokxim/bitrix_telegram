@@ -19,6 +19,9 @@ class TelegramService
         $this->bot = new TelegramBot(env('TELEGRAM_BOT_TOKEN'));
         $this->adminChatId = env('TELEGRAM_ADMIN_GROUP_ID');
         $this->token = config('services.telegram.bot_token');
+        if (!$this->token) {
+            Log::error('Telegram bot token not configured');
+        }
     }
 
     public function sendMessageToAdminGroup($message, $keyboard = null, $parseMode = false)
@@ -407,6 +410,16 @@ Barcha mahsulotlarni ko'rish uchun quyidagi tugmani bosing 👇 va ro'yxatdan o'
     public function sendMessage($chatId, $message, $options = [])
     {
         try {
+            Log::info('Attempting to send Telegram message', [
+                'chat_id' => $chatId,
+                'message' => $message
+            ]);
+
+            if (!$this->token) {
+                Log::error('Cannot send message: Telegram bot token not configured');
+                return false;
+            }
+
             $params = array_merge([
                 'chat_id' => $chatId,
                 'text' => $message
@@ -422,11 +435,9 @@ Barcha mahsulotlarni ko'rish uchun quyidagi tugmani bosing 👇 va ro'yxatdan o'
 
             return $response;
         } catch (\Exception $e) {
-            Log::error('Error sending Telegram message: ' . $e->getMessage(), [
-                'chat_id' => $chatId,
-                'message' => $message,
-                'options' => $options,
-                'error' => $e->getMessage()
+            Log::error('Failed to send message to Telegram', [
+                'error' => $e->getMessage(),
+                'chat_id' => $chatId
             ]);
             return null;
         }
