@@ -53,11 +53,12 @@ class Bitrix24WebhookController extends Controller
             // Обновляем статус
             $newStageId = $dealDetails['STAGE_ID'] ?? null;
             if ($newStageId) {
+                $oldStatus = $order->status;
                 $order->status = $this->mapBitrixStageToStatus($newStageId);
                 $order->save();
 
                 // Отправляем уведомление
-                $message = $this->getStatusMessage($order->status, $order->id);
+                $message = $this->getStatusMessage($order->status, $order->id, $newStageId);
                 $this->telegramService->sendMessage($user->telegram_chat_id, $message);
             }
 
@@ -87,15 +88,32 @@ class Bitrix24WebhookController extends Controller
         return $statusMap[$stageId] ?? 'unknown';
     }
 
-    protected function getStatusMessage($status, $orderId)
+    protected function getBitrixStageName($stageId)
     {
+        $stageNames = [
+            'NEW' => 'Новый',
+            'PREPARATION' => 'Подготовка',
+            'PREPAYMENT_INVOICE' => 'Ожидает оплату',
+            'EXECUTING' => 'В работе',
+            'FINAL_INVOICE' => 'Готов к выдаче',
+            'WON' => 'Выполнен',
+            'LOSE' => 'Отказано',
+        ];
+
+        return $stageNames[$stageId] ?? $stageId;
+    }
+
+    protected function getStatusMessage($status, $orderId, $bitrixStageId)
+    {
+        $bitrixStageName = $this->getBitrixStageName($bitrixStageId);
+        
         $messages = [
-            'new' => "Ваш заказ #{$orderId} принят в обработку",
-            'processing' => "Заказ #{$orderId} обрабатывается",
-            'pending_payment' => "Ожидается оплата заказа #{$orderId}",
-            'completed' => "Заказ #{$orderId} выполнен",
-            'cancelled' => "Заказ #{$orderId} отменен",
-            'unknown' => "Статус заказа #{$orderId} обновлен",
+            'new' => "Ваш заказ #{$orderId} принят в обработку\nСтатус: {$bitrixStageName}",
+            'processing' => "Заказ #{$orderId} обрабатывается\nСтатус: {$bitrixStageName}",
+            'pending_payment' => "Ожидается оплата заказа #{$orderId}\nСтатус: {$bitrixStageName}",
+            'completed' => "Заказ #{$orderId} выполнен\nСтатус: {$bitrixStageName}",
+            'cancelled' => "Заказ #{$orderId} отменен\nСтатус: {$bitrixStageName}",
+            'unknown' => "Статус заказа #{$orderId} обновлен\nНовый статус: {$bitrixStageName}",
         ];
 
         return $messages[$status] ?? $messages['unknown'];
