@@ -297,4 +297,39 @@ class DealService extends Bitrix24BaseService
 
         return $row;
     }
+
+    /**
+     * Получает информацию о сделке по её ID
+     */
+    public function getDeal($dealId)
+    {
+        try {
+            $response = $this->client->get($this->webhookUrl . 'crm.deal.get', [
+                'query' => [
+                    'id' => $dealId
+                ]
+            ]);
+
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($result['result'])) {
+                return $result['result'];
+            }
+
+            Log::error('Ошибка при получении сделки из Битрикс24', [
+                'deal_id' => $dealId,
+                'response' => $result
+            ]);
+
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Ошибка при запросе к Битрикс24: ' . $e->getMessage(), [
+                'deal_id' => $dealId,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return null;
+        }
+    }
 }
