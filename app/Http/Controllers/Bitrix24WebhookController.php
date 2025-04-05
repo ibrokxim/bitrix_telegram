@@ -105,15 +105,16 @@ class Bitrix24WebhookController extends Controller
 
     protected function getStatusMessage($status, $orderId, $bitrixStageId)
     {
-        $bitrixStageName = $this->getBitrixStageName($bitrixStageId);
+        // Получаем название стадии из Битрикс24
+        $stageName = $this->dealService->getStageName($bitrixStageId);
         
         $messages = [
-            'new' => "Ваш заказ #{$orderId} принят в обработку\nСтатус: {$bitrixStageName}",
-            'processing' => "Заказ #{$orderId} обрабатывается\nСтатус: {$bitrixStageName}",
-            'pending_payment' => "Ожидается оплата заказа #{$orderId}\nСтатус: {$bitrixStageName}",
-            'completed' => "Заказ #{$orderId} выполнен\nСтатус: {$bitrixStageName}",
-            'cancelled' => "Заказ #{$orderId} отменен\nСтатус: {$bitrixStageName}",
-            'unknown' => "Статус заказа #{$orderId} обновлен\nНовый статус: {$bitrixStageName}",
+            'new' => "Ваш заказ #{$orderId} принят в обработку\nСтатус: {$stageName}",
+            'processing' => "Заказ #{$orderId} обрабатывается\nСтатус: {$stageName}",
+            'pending_payment' => "Ожидается оплата заказа #{$orderId}\nСтатус: {$stageName}",
+            'completed' => "Заказ #{$orderId} выполнен\nСтатус: {$stageName}",
+            'cancelled' => "Заказ #{$orderId} отменен\nСтатус: {$stageName}",
+            'unknown' => "Статус заказа #{$orderId} обновлен\nНовый статус: {$stageName}",
         ];
 
         return $messages[$status] ?? $messages['unknown'];

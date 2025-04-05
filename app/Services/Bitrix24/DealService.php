@@ -353,4 +353,73 @@ class DealService extends Bitrix24BaseService
             return null;
         }
     }
+
+    /**
+     * Получает список всех стадий сделок
+     */
+    public function getDealStages()
+    {
+        try {
+            $response = $this->client->get($this->webhookUrl . 'crm.dealcategory.stage.list');
+            $result = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($result['result'])) {
+                Log::info('Получены стадии сделок:', ['stages' => $result['result']]);
+                return $result['result'];
+            }
+
+            Log::error('Ошибка при получении стадий сделок', ['response' => $result]);
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Ошибка при запросе стадий сделок: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Получает название стадии по её ID
+     */
+    public function getStageName($stageId)
+    {
+        static $stages = null;
+
+        if ($stages === null) {
+            $stages = $this->getDealStages();
+        }
+
+        // Если стадия найдена в кэше
+        if ($stages && isset($stages[$stageId])) {
+            return $stages[$stageId]['NAME'];
+        }
+
+        // Если это стадия из определенной воронки (формат C5:NEW)
+        if (strpos($stageId, ':') !== false) {
+            list($category, $stage) = explode(':', $stageId);
+            
+            try {
+                $response = $this->client->get($this->webhookUrl . 'crm.dealcategory.stage.list', [
+                    'query' => [
+                        'id' => substr($category, 1) // Убираем 'C' из начала
+                    ]
+                ]);
+                
+                $result = json_decode($response->getBody()->getContents(), true);
+                
+                if (isset($result['result'])) {
+                    foreach ($result['result'] as $stageInfo) {
+                        if ($stageInfo['STATUS_ID'] === $stage) {
+                            return $stageInfo['NAME'];
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Ошибка при получении названия стадии: ' . $e->getMessage());
+            }
+        }
+
+        return $stageId; // Возвращаем исходный ID, если не удалось найти название
+    }
 }
