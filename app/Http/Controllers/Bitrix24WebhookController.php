@@ -107,6 +107,9 @@ class Bitrix24WebhookController extends Controller
 
     protected function mapBitrixStageToStatus($stageId)
     {
+        // Убираем префикс C5: если он есть
+        $stageId = str_replace('C5:', '', $stageId);
+
         $statusMap = [
             'NEW' => 'new',                    // Заявка принята
             'PREPARATION' => 'processing',      // Квалификация проведена
@@ -125,6 +128,9 @@ class Bitrix24WebhookController extends Controller
 
     protected function getStatusMessage($status, $orderId, $bitrixStageId)
     {
+        // Убираем префикс C5: если он есть
+        $bitrixStageId = str_replace('C5:', '', $bitrixStageId);
+
         $stageNames = [
             'NEW' => 'Заявка принята',
             'PREPARATION' => 'Квалификация проведена',
@@ -134,11 +140,11 @@ class Bitrix24WebhookController extends Controller
             '1' => 'Договор составлен',
             '2' => 'Оплата получена',
             'WON' => 'Сделка успешна',
-            'LOSE' => 'Сделка провалена',
-            'APOLOGY' => 'Анализ причины провала'
+            'LOSE' => 'Сделка отменена',
+            'APOLOGY' => 'Анализ причины отмены'
         ];
 
-        $stageName = $stageNames[$bitrixStageId] ?? $bitrixStageId;
+        $stageName = $stageNames[$bitrixStageId] ?? 'Статус неизвестен';
         
         $messages = [
             'new' => "🆕 Ваш заказ #{$orderId}\nСтатус: {$stageName}",
