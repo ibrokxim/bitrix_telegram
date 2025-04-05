@@ -384,42 +384,29 @@ class DealService extends Bitrix24BaseService
      */
     public function getStageName($stageId)
     {
-        static $stages = null;
-
-        if ($stages === null) {
-            $stages = $this->getDealStages();
-        }
-
-        // Если стадия найдена в кэше
-        if ($stages && isset($stages[$stageId])) {
-            return $stages[$stageId]['NAME'];
-        }
+        $stageNames = [
+            'NEW' => 'Заявка принята',
+            'PREPARATION' => 'Квалификация проведена',
+            'PREPAYMENT_INVOICE' => 'Встреча назначена',
+            'EXECUTING' => 'Встреча проведена',
+            'FINAL_INVOICE' => 'Дожим на договор',
+            '1' => 'Договор составлен',
+            '2' => 'Оплата получена',
+            'WON' => 'Сделка успешна',
+            'LOSE' => 'Сделка провалена',
+            'APOLOGY' => 'Анализ причины провала'
+        ];
 
         // Если это стадия из определенной воронки (формат C5:NEW)
         if (strpos($stageId, ':') !== false) {
             list($category, $stage) = explode(':', $stageId);
-            
-            try {
-                $response = $this->client->get($this->webhookUrl . 'crm.dealcategory.stage.list', [
-                    'query' => [
-                        'id' => substr($category, 1) // Убираем 'C' из начала
-                    ]
-                ]);
-                
-                $result = json_decode($response->getBody()->getContents(), true);
-                
-                if (isset($result['result'])) {
-                    foreach ($result['result'] as $stageInfo) {
-                        if ($stageInfo['STATUS_ID'] === $stage) {
-                            return $stageInfo['NAME'];
-                        }
-                    }
-                }
-            } catch (\Exception $e) {
-                Log::error('Ошибка при получении названия стадии: ' . $e->getMessage());
+            // Проверяем есть ли стадия в нашем списке
+            if (isset($stageNames[$stage])) {
+                return $stageNames[$stage];
             }
         }
 
-        return $stageId; // Возвращаем исходный ID, если не удалось найти название
+        // Проверяем обычный ID
+        return $stageNames[$stageId] ?? $stageId;
     }
 }
